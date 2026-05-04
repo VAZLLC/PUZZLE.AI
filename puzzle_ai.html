@@ -1,0 +1,4086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PUZZLE.AI — Turn lectures into structured knowledge</title>
+<meta name="description" content="A study pipeline that turns university lectures into summaries, understanding-check quizzes, and a living concept ontology — powered by Claude." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --bg-2: #15151f;
+    --surface: #252535;
+    --surface-2: #2f2f42;
+    --surface-3: #3a3a50;
+    --border: #3a3a50;
+    --border-soft: #2f2f42;
+    --accent: #da7756;
+    --accent-hover: #e88c6e;
+    --accent-soft: rgba(218, 119, 86, 0.12);
+    --accent-softer: rgba(218, 119, 86, 0.06);
+    --cream: #f0e6d3;
+    --text: #f0e6d3;
+    --text-muted: #b5aa9a;
+    --text-dim: #8a8175;
+    --success: #7cb98c;
+    --error: #e26b6b;
+    --warning: #d4a256;
+    --hot: #e26b6b;
+    --warm: #d4a256;
+    --cool: #7cb98c;
+    --tag-fixed: #6b9bd4;
+    --tag-session: #c89f6a;
+    --tag-both: #da7756;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input, textarea, select { font-family: inherit; color: inherit; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ::selection { background: var(--accent); color: var(--bg); }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  .app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+
+  /* ====== TOP BAR ====== */
+  .topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 24px;
+    background: linear-gradient(180deg, #1f1f33 0%, #1a1a2e 100%);
+    border-bottom: 1px solid var(--border-soft);
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent) 0%, #c55f3d 100%);
+    display: grid; place-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; color: #1a1a2e; font-size: 15px;
+    box-shadow: 0 4px 16px rgba(218,119,86,0.25);
+  }
+  .brand-name { letter-spacing: 0.18em; font-weight: 700; font-size: 13px; color: var(--cream); }
+  .brand-dot { color: var(--accent); }
+
+  .topbar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+
+  .tb-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px; color: var(--text-muted);
+    transition: all 0.15s;
+  }
+  .tb-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .conn-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px 7px 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px; color: var(--text-muted);
+    cursor: pointer; transition: border-color 0.15s, color 0.15s;
+  }
+  .conn-pill:hover { border-color: var(--accent); color: var(--text); }
+  .conn-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+  .conn-pill .dot.syncing { background: var(--warning); animation: pulse 1.2s infinite; }
+  .conn-pill .dot.offline { background: var(--text-dim); box-shadow: none; }
+  .conn-pill .key-fragment { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); }
+  .conn-pill .conn-edit { font-size: 11px; color: var(--text-dim); margin-left: 2px; }
+
+  .conn-pill-empty {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    border-radius: 999px;
+    font-size: 12px; color: var(--accent);
+    cursor: pointer; font-weight: 600;
+  }
+  .conn-pill-empty:hover { background: var(--accent); color: var(--bg); }
+
+  .model-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; color: var(--text-dim);
+    padding: 7px 10px;
+    background: var(--bg-2); border: 1px solid var(--border-soft);
+    border-radius: 6px; letter-spacing: 0.03em;
+  }
+
+  .save-indicator {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10.5px; color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.04em;
+  }
+  .save-indicator .si-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success);
+  }
+  .save-indicator.saving .si-dot { background: var(--warning); animation: pulse 1.2s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* ====== LAYOUT ====== */
+  .main { display: grid; grid-template-columns: 280px 1fr; overflow: hidden; }
+
+  /* ====== SIDEBAR ====== */
+  .sidebar {
+    background: var(--bg-2);
+    border-right: 1px solid var(--border-soft);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header { padding: 18px 20px 10px; display: flex; justify-content: space-between; align-items: center; }
+  .sidebar-title { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
+  .subject-count { font-size: 11px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+  .subject-list { flex: 1; overflow-y: auto; padding: 4px 10px; }
+
+  .subject-item {
+    position: relative;
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 12px; margin-bottom: 4px;
+    border-radius: 8px; cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    color: var(--text-muted);
+  }
+  .subject-item:hover { background: var(--surface); color: var(--text); }
+  .subject-item.active { background: var(--accent-soft); color: var(--cream); }
+  .subject-item.active::before {
+    content: ""; position: absolute;
+    left: -10px; top: 10px; bottom: 10px;
+    width: 3px; background: var(--accent); border-radius: 0 3px 3px 0;
+  }
+  .subject-icon {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: var(--surface-2);
+    display: grid; place-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .subject-item.active .subject-icon { background: var(--accent); color: var(--bg); }
+  .subject-name { flex: 1; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .subject-delete {
+    opacity: 0; padding: 4px; border-radius: 4px;
+    color: var(--text-dim);
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+  }
+  .subject-item:hover .subject-delete { opacity: 1; }
+  .subject-delete:hover { background: var(--surface-2); color: var(--error); }
+
+  .add-subject-wrap { padding: 12px 16px 20px; }
+  .add-subject-btn {
+    width: 100%; padding: 10px;
+    border: 1px dashed var(--border); border-radius: 8px;
+    color: var(--text-muted); font-size: 13px; font-weight: 500;
+    transition: all 0.15s;
+    display: flex; justify-content: center; align-items: center; gap: 6px;
+  }
+  .add-subject-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-softer); }
+  .add-subject-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ====== WORKSPACE ====== */
+  .workspace { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+
+  .subject-header {
+    padding: 22px 32px 0;
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  .subject-header h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600; font-size: 26px;
+    letter-spacing: -0.01em; color: var(--cream);
+  }
+  .subject-header .subtext {
+    color: var(--text-dim); font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .tabs {
+    display: flex; gap: 2px;
+    padding: 14px 32px 0;
+    border-bottom: 1px solid var(--border-soft);
+    overflow-x: auto; scrollbar-width: thin;
+  }
+  .tab {
+    padding: 10px 16px;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap; margin-bottom: -1px;
+    position: relative;
+  }
+  .tab:hover { color: var(--text-muted); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab.prep { border-left: 1px solid var(--border-soft); padding-left: 18px; margin-left: 6px; }
+  .tab-number {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--text-dim); margin-right: 6px;
+  }
+  .tab.active .tab-number { color: var(--accent); }
+  .tab-badge {
+    display: inline-block;
+    background: var(--hot); color: white;
+    font-size: 9px; font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 6px;
+    letter-spacing: 0.02em;
+    vertical-align: 1px;
+  }
+
+  .panels { flex: 1; overflow-y: auto; padding: 28px 32px 40px; }
+  .panel { display: none; animation: fadeIn 0.25s ease; }
+  .panel.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .panel-intro { margin-bottom: 18px; }
+  .panel-intro h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 22px; font-weight: 600; color: var(--cream);
+    margin-bottom: 6px;
+  }
+  .panel-intro p { color: var(--text-muted); font-size: 13.5px; max-width: 720px; }
+  .panel-intro .tag-inline {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    font-weight: 500; margin-left: 6px; vertical-align: 2px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ====== DROPZONE / FILES ====== */
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: 12px;
+    padding: 36px 20px; text-align: center;
+    background: var(--surface); transition: all 0.15s; cursor: pointer;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent); background: var(--accent-softer);
+  }
+  .dropzone-icon { font-size: 24px; margin-bottom: 10px; color: var(--accent); }
+  .dropzone-title { font-weight: 600; color: var(--cream); margin-bottom: 4px; }
+  .dropzone-sub { color: var(--text-dim); font-size: 12px; }
+  .dropzone input[type=file] { display: none; }
+
+  .file-list { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .file-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: 8px; font-size: 13px;
+  }
+  .file-icon {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: var(--surface-2);
+    display: grid; place-items: center;
+    color: var(--accent); flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 600;
+  }
+  .file-meta { flex: 1; overflow: hidden; }
+  .file-name { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-sub {
+    color: var(--text-dim); font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .file-sub .file-label {
+    color: var(--accent); font-weight: 600; letter-spacing: 0.04em;
+  }
+  .file-remove { padding: 4px 8px; border-radius: 4px; color: var(--text-dim); font-size: 12px; }
+  .file-remove:hover { color: var(--error); background: var(--surface-2); }
+
+  .empty-files {
+    padding: 18px 16px; text-align: center;
+    color: var(--text-dim); font-size: 12.5px; font-style: italic;
+  }
+
+  .info-note {
+    margin-top: 14px; padding: 12px 14px;
+    background: var(--accent-softer); border-left: 3px solid var(--accent);
+    border-radius: 4px; color: var(--text-muted);
+    font-size: 12.5px; line-height: 1.6;
+  }
+
+  /* ====== TRANSCRIPT ====== */
+  .transcript-ta {
+    width: 100%; min-height: 360px; max-height: 70vh;
+    padding: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px; line-height: 1.6; color: var(--text);
+    resize: vertical;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .transcript-ta:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-softer);
+  }
+  .ta-meta {
+    display: flex; justify-content: space-between; margin-top: 8px;
+    color: var(--text-dim); font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .ta-meta button { color: var(--text-dim); font-family: inherit; font-size: inherit; }
+  .ta-meta button:hover { color: var(--accent); }
+
+  /* ====== BUTTONS ====== */
+  .actions-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    padding: 10px 18px; border-radius: 8px;
+    font-weight: 600; font-size: 13px;
+    letter-spacing: 0.02em;
+    transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary {
+    background: var(--accent); color: #1a1a2e;
+    box-shadow: 0 2px 8px rgba(218,119,86,0.2);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover); transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(218,119,86,0.3);
+  }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-ghost { color: var(--text-muted); padding: 8px 12px; }
+  .btn-ghost:hover { color: var(--accent); }
+
+  .btn .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(26,26,46,0.3);
+    border-top-color: #1a1a2e;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .action-hint { font-size: 12px; color: var(--text-dim); font-style: italic; }
+
+  /* ====== VIEW BANNER ====== */
+  .view-banner {
+    display: none;
+    align-items: center; gap: 12px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: var(--accent-softer);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    font-size: 12.5px;
+  }
+  .view-banner.show { display: flex; }
+  .view-banner .vb-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.08em;
+    color: var(--accent); font-weight: 700;
+  }
+  .view-banner .vb-name {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--cream); font-weight: 600;
+  }
+  .view-banner .vb-back {
+    margin-left: auto;
+    padding: 5px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 600;
+    color: var(--accent);
+  }
+  .view-banner .vb-back:hover { background: var(--accent); color: var(--bg); }
+
+  /* ====== RESULT CARDS ====== */
+  .result-card {
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: 12px; padding: 22px 24px; margin-bottom: 14px;
+  }
+  .result-card h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 17px; font-weight: 600; color: var(--cream);
+    margin-bottom: 12px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .result-card h3::before {
+    content: ""; width: 6px; height: 18px;
+    background: var(--accent); border-radius: 2px;
+  }
+  .result-card ul { padding-left: 20px; color: var(--text); }
+  .result-card ul li { margin-bottom: 6px; }
+  .result-card p { color: var(--text); margin-bottom: 10px; }
+  .result-card dl dt { font-weight: 600; color: var(--accent); margin-top: 10px; font-size: 13.5px; }
+  .result-card dl dd { margin-left: 0; color: var(--text); margin-bottom: 6px; }
+
+  /* Clickable concept (cross-tab navigation) */
+  .concept-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 2px 3px;
+    background: var(--accent-softer);
+    border: 1px solid var(--accent-soft);
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .concept-chip:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  /* ====== QUIZ ====== */
+  .quiz-item {
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 18px 22px; margin-bottom: 12px;
+  }
+  .quiz-item.answered-correct { border-left-color: var(--success); }
+  .quiz-item.answered-wrong { border-left-color: var(--error); }
+  .quiz-item .q-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--accent); font-weight: 600;
+    margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 6px;
+  }
+  .q-type {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    background: var(--surface-2); color: var(--text-muted);
+    font-weight: 500; letter-spacing: 0.04em;
+  }
+  .q-concepts {
+    display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+  }
+  .q-concepts .concept-chip { font-size: 10.5px; padding: 1px 6px; }
+  .quiz-item .q-body { font-weight: 500; color: var(--cream); margin-bottom: 10px; line-height: 1.5; }
+  .quiz-choices { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .quiz-choice {
+    padding: 8px 12px;
+    background: var(--bg-2); border: 1px solid var(--border-soft);
+    border-radius: 6px; color: var(--text); font-size: 13.5px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .quiz-choice:hover { border-color: var(--accent); background: var(--surface-2); }
+  .quiz-choice.selected {
+    border-color: var(--accent); background: var(--accent-softer);
+  }
+  .quiz-choice.correct {
+    border-color: var(--success); background: rgba(124,185,140,0.1);
+    color: var(--success);
+  }
+  .quiz-choice.wrong {
+    border-color: var(--error); background: rgba(226,107,107,0.08);
+    color: var(--error);
+  }
+  .quiz-choice.disabled {
+    cursor: default; pointer-events: none; opacity: 0.7;
+  }
+  .quiz-short {
+    display: flex; flex-direction: column; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .quiz-short input {
+    padding: 10px 14px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+    font-size: 13.5px;
+  }
+  .quiz-short input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-softer);
+  }
+  .quiz-short .short-actions { display: flex; gap: 8px; }
+  .quiz-actions {
+    display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;
+  }
+  .quiz-mini-btn {
+    padding: 6px 12px; border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .quiz-mini-btn.correct {
+    background: rgba(124,185,140,0.15); color: var(--success);
+    border: 1px solid rgba(124,185,140,0.3);
+  }
+  .quiz-mini-btn.correct:hover:not(:disabled) { background: var(--success); color: var(--bg); }
+  .quiz-mini-btn.wrong {
+    background: rgba(226,107,107,0.1); color: var(--error);
+    border: 1px solid rgba(226,107,107,0.3);
+  }
+  .quiz-mini-btn.wrong:hover:not(:disabled) { background: var(--error); color: var(--bg); }
+  .quiz-mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .quiz-answer-toggle {
+    font-size: 12px; color: var(--accent);
+    font-weight: 600; padding: 6px 0;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .quiz-answer-toggle:hover { text-decoration: underline; }
+  .quiz-answer {
+    display: none; margin-top: 8px; padding: 12px 14px;
+    background: var(--accent-softer);
+    border-left: 2px solid var(--accent);
+    border-radius: 4px;
+    font-size: 13px; color: var(--text);
+  }
+  .quiz-answer.show { display: block; }
+  .quiz-answer strong { color: var(--accent); }
+
+  .quiz-score-summary {
+    padding: 14px 18px; margin-bottom: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft); border-left: 3px solid var(--success);
+    border-radius: 8px;
+    font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .quiz-score-summary .score-big {
+    font-family: 'Fraunces', serif;
+    font-size: 20px; font-weight: 600;
+    color: var(--success);
+  }
+  .quiz-score-summary .score-meta {
+    color: var(--text-muted); font-size: 12px;
+  }
+  .quiz-filter-bar {
+    display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .filter-chip {
+    padding: 5px 12px;
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    font-size: 11px; color: var(--text-muted);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .filter-chip:hover { border-color: var(--accent); color: var(--text); }
+  .filter-chip.active {
+    background: var(--accent); border-color: var(--accent); color: var(--bg);
+  }
+
+  /* ====== ONTOLOGY ====== */
+  .ontology-controls {
+    display: flex; gap: 10px; margin-bottom: 18px;
+    flex-wrap: wrap; align-items: center;
+  }
+  .toggle-row {
+    display: flex; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: 8px; padding: 4px;
+  }
+  .toggle-btn {
+    padding: 6px 12px; font-size: 12px; border-radius: 6px;
+    color: var(--text-muted); font-weight: 500;
+  }
+  .toggle-btn.active { background: var(--accent); color: var(--bg); }
+
+  .ont-section { margin-bottom: 24px; }
+  .ont-section h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 16px; color: var(--cream); margin-bottom: 12px; font-weight: 600;
+  }
+  .concept-group { margin-bottom: 18px; }
+  .concept-group-head {
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-dim); margin-bottom: 8px; font-weight: 600;
+  }
+  .concept-item {
+    padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: 8px; margin-bottom: 6px;
+    display: flex; gap: 10px; align-items: flex-start;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+  }
+  .concept-item:hover {
+    border-color: var(--accent); background: var(--accent-softer);
+  }
+  .concept-name { font-weight: 600; color: var(--cream); font-size: 13.5px; }
+  .concept-desc { color: var(--text-muted); font-size: 12.5px; margin-top: 2px; }
+  .concept-metrics {
+    display: flex; gap: 10px; margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+  }
+  .metric {
+    display: inline-flex; align-items: center; gap: 3px;
+    color: var(--text-dim);
+  }
+  .metric.hot { color: var(--hot); font-weight: 600; }
+  .metric.warm { color: var(--warm); font-weight: 600; }
+  .metric.accuracy-hot { color: var(--hot); font-weight: 700; }
+  .metric.accuracy-warm { color: var(--warm); }
+  .metric.accuracy-cool { color: var(--cool); }
+  .tag {
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px; font-weight: 700;
+    padding: 3px 7px; border-radius: 4px;
+    letter-spacing: 0.05em; margin-top: 2px;
+  }
+  .tag-FIXED { background: rgba(107,155,212,0.15); color: var(--tag-fixed); border: 1px solid rgba(107,155,212,0.3); }
+  .tag-SESSION { background: rgba(200,159,106,0.15); color: var(--tag-session); border: 1px solid rgba(200,159,106,0.3); }
+  .tag-BOTH {
+    background: rgba(218,119,86,0.18); color: var(--accent);
+    border: 1px solid rgba(218,119,86,0.4);
+    box-shadow: 0 0 0 2px rgba(218,119,86,0.06);
+  }
+  .concept-item.is-both {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-softer);
+  }
+
+  .relation-item {
+    padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: 8px; margin-bottom: 6px;
+    font-size: 13px; line-height: 1.6;
+  }
+  .rel-type {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; padding: 2px 8px; border-radius: 4px;
+    background: var(--surface-2); color: var(--accent);
+    margin-right: 10px;
+    font-weight: 600; letter-spacing: 0.04em;
+  }
+  .rel-from-to { color: var(--cream); font-weight: 500; }
+  .rel-arrow { color: var(--accent); margin: 0 6px; }
+  .rel-desc { margin-top: 4px; color: var(--text-muted); font-size: 12.5px; }
+
+  /* ====== D3 GRAPH ====== */
+  .graph-container {
+    width: 100%;
+    height: 560px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+  }
+  .graph-container svg { width: 100%; height: 100%; display: block; cursor: grab; }
+  .graph-container svg:active { cursor: grabbing; }
+  .graph-legend {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(21,21,31,0.92);
+    padding: 10px 14px; border-radius: 8px;
+    border: 1px solid var(--border-soft);
+    font-size: 11px; color: var(--text-muted);
+    line-height: 1.9;
+    font-family: 'JetBrains Mono', monospace;
+    pointer-events: none;
+  }
+  .graph-legend .legend-row { display: flex; align-items: center; gap: 8px; }
+  .graph-legend .legend-swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  }
+  .node-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    fill: var(--cream);
+    font-weight: 500;
+    pointer-events: none;
+    user-select: none;
+  }
+  .node circle { cursor: pointer; stroke-width: 2; }
+  .link { stroke-opacity: 0.5; }
+  .link-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: var(--text-dim);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* ====== EMPTY STATE ====== */
+  .empty-state {
+    padding: 48px 24px; text-align: center;
+    color: var(--text-dim);
+    background: var(--surface); border: 1px dashed var(--border);
+    border-radius: 12px;
+  }
+  .empty-state .es-icon {
+    font-size: 32px; margin-bottom: 12px; color: var(--accent);
+    font-family: 'Fraunces', serif; font-style: italic;
+  }
+  .empty-state h4 {
+    color: var(--cream); font-size: 16px; margin-bottom: 6px;
+    font-family: 'Fraunces', serif; font-weight: 600;
+  }
+  .empty-state p { font-size: 13px; max-width: 420px; margin: 0 auto; }
+  .empty-state .es-steps {
+    margin-top: 18px; text-align: left;
+    max-width: 380px; margin-left: auto; margin-right: auto;
+    font-size: 12.5px; line-height: 1.8; color: var(--text-muted);
+  }
+  .empty-state .es-steps strong {
+    color: var(--accent); font-family: 'JetBrains Mono', monospace; margin-right: 6px;
+  }
+
+  /* ====== ARCHIVE ====== */
+  .archive-block {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px dashed var(--border);
+  }
+  .archive-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .archive-title {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-dim); font-weight: 600;
+  }
+  .archive-count {
+    font-size: 11px; color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .archive-list { display: flex; flex-direction: column; gap: 6px; }
+  .archive-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+  }
+  .archive-item:hover {
+    border-color: var(--accent);
+    background: var(--accent-softer);
+  }
+  .archive-item.is-current {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .archive-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+    min-width: 110px;
+  }
+  .archive-body { flex: 1; overflow: hidden; }
+  .archive-preview {
+    color: var(--text); font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 13px;
+  }
+  .archive-time {
+    color: var(--text-dim); font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 2px;
+  }
+  .archive-score {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600;
+    margin-top: 2px;
+  }
+  .archive-score.hot { color: var(--hot); }
+  .archive-score.warm { color: var(--warm); }
+  .archive-score.cool { color: var(--cool); }
+  .archive-score.pending { color: var(--text-dim); }
+  .archive-actions {
+    display: flex; gap: 4px; flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+  }
+  .archive-item:hover .archive-actions { opacity: 1; }
+  .archive-action-btn {
+    padding: 4px 8px; border-radius: 5px;
+    font-size: 11px; color: var(--text-dim);
+  }
+  .archive-action-btn:hover { background: var(--surface-2); color: var(--accent); }
+  .archive-action-btn.delete:hover { color: var(--error); }
+
+  .archive-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-dim); font-size: 12.5px;
+    font-style: italic;
+  }
+
+  /* ====== PREP DASHBOARD ====== */
+  .prep-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .prep-card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .prep-card .prep-label {
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .prep-card .prep-value {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--cream);
+    line-height: 1.1;
+    margin-bottom: 4px;
+  }
+  .prep-card .prep-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .prep-card.accent .prep-value { color: var(--accent); }
+  .prep-card.success .prep-value { color: var(--success); }
+  .prep-card.warning .prep-value { color: var(--warning); }
+  .prep-card.hot .prep-value { color: var(--hot); }
+
+  .prep-progressbar {
+    margin-top: 10px;
+    height: 6px;
+    background: var(--bg-2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .prep-progressbar .fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+  .prep-progressbar.success .fill { background: var(--success); }
+
+  .prep-section {
+    margin-bottom: 28px;
+  }
+  .prep-section h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 18px; font-weight: 600;
+    color: var(--cream); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .prep-section .section-sub {
+    color: var(--text-muted); font-size: 12.5px;
+    margin-bottom: 14px;
+  }
+
+  .weak-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    margin-bottom: 6px;
+  }
+  .weak-item:hover {
+    border-color: var(--accent);
+    cursor: pointer;
+  }
+  .weak-rank {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+    min-width: 28px;
+  }
+  .weak-name {
+    color: var(--cream); font-weight: 600; font-size: 14px;
+  }
+  .weak-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .weak-accuracy {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px; font-weight: 700;
+    min-width: 55px;
+    text-align: right;
+  }
+  .weak-accuracy.hot { color: var(--hot); }
+  .weak-accuracy.warm { color: var(--warm); }
+  .weak-accuracy.cool { color: var(--cool); }
+  .weak-bar {
+    width: 80px; height: 4px;
+    background: var(--bg-2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .weak-bar .fill { height: 100%; border-radius: 2px; }
+  .weak-bar .fill.hot { background: var(--hot); }
+  .weak-bar .fill.warm { background: var(--warm); }
+  .weak-bar .fill.cool { background: var(--cool); }
+
+  .hot-concept-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .hot-concept-item:hover {
+    border-color: var(--accent);
+    background: var(--accent-softer);
+  }
+  .hot-icon {
+    font-size: 16px;
+  }
+  .hot-name { color: var(--cream); font-weight: 600; }
+  .hot-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .hot-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; font-weight: 700;
+    color: var(--accent);
+  }
+
+  .study-plan-item {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .study-plan-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-softer);
+    padding: 4px 8px; border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .study-plan-body { flex: 1; }
+  .study-plan-title {
+    font-weight: 600; color: var(--cream);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .study-plan-desc {
+    color: var(--text-muted); font-size: 12.5px;
+    line-height: 1.55;
+  }
+
+  /* ====== HEATMAP ====== */
+  .heatmap-wrap {
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+  .heatmap {
+    border-collapse: collapse;
+    font-size: 11px;
+    min-width: 500px;
+  }
+  .heatmap th, .heatmap td {
+    padding: 6px 8px;
+    text-align: center;
+    border: 1px solid var(--border-soft);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .heatmap th {
+    color: var(--text-dim);
+    background: var(--bg-2);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .heatmap th.concept-col {
+    text-align: left; padding-left: 12px;
+    min-width: 160px;
+  }
+  .heatmap td.concept-col {
+    text-align: left; padding-left: 12px;
+    color: var(--cream);
+    background: var(--surface);
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .heatmap td.concept-col:hover { color: var(--accent); }
+  .heatmap td.cell { cursor: default; }
+  .heatmap td.cell.correct { background: rgba(124,185,140,0.18); color: var(--success); font-weight: 600; }
+  .heatmap td.cell.wrong { background: rgba(226,107,107,0.18); color: var(--error); font-weight: 600; }
+  .heatmap td.cell.pending { background: var(--surface); color: var(--text-dim); }
+  .heatmap td.cell.na { background: var(--bg-2); color: var(--text-dim); opacity: 0.4; }
+  .heatmap td.overall {
+    background: var(--surface-2);
+    font-weight: 700;
+  }
+  .heatmap td.overall.hot { color: var(--hot); }
+  .heatmap td.overall.warm { color: var(--warm); }
+  .heatmap td.overall.cool { color: var(--cool); }
+
+  /* ====== FOOTER ====== */
+  .footer {
+    padding: 10px 24px;
+    background: var(--bg-2);
+    border-top: 1px solid var(--border-soft);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.04em;
+    flex-wrap: wrap; gap: 12px;
+  }
+  .footer a { color: var(--text-muted); }
+  .footer a:hover { color: var(--accent); }
+  .footer-right { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+
+  /* ====== TOAST ====== */
+  .toast-wrap {
+    position: fixed; bottom: 52px; right: 24px;
+    z-index: 1000;
+    display: flex; flex-direction: column; gap: 10px;
+    max-width: 380px;
+  }
+  .toast {
+    padding: 12px 16px; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); font-size: 13px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+    animation: slideIn 0.25s ease;
+  }
+  .toast.error { border-left: 3px solid var(--error); }
+  .toast.success { border-left: 3px solid var(--success); }
+  .toast.info { border-left: 3px solid var(--accent); }
+  @keyframes slideIn {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* ====== MODAL ====== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,10,20,0.6);
+    backdrop-filter: blur(4px);
+    display: none; align-items: center; justify-content: center;
+    z-index: 500; padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px;
+    width: 100%; max-width: 420px;
+    max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .modal.lg { max-width: 600px; }
+  .modal h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 20px; font-weight: 600; color: var(--cream);
+    margin-bottom: 6px;
+  }
+  .modal p { color: var(--text-muted); margin-bottom: 16px; font-size: 13.5px; }
+  .modal input, .modal textarea {
+    width: 100%; padding: 10px 14px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; margin-bottom: 18px;
+  }
+  .modal input:focus, .modal textarea:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-softer);
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* Concept details modal */
+  .concept-detail-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 14px;
+  }
+  .concept-detail-name {
+    font-family: 'Fraunces', serif;
+    font-size: 22px; font-weight: 600;
+    color: var(--cream);
+  }
+  .concept-detail-desc {
+    color: var(--text-muted);
+    font-size: 13.5px;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    background: var(--bg-2);
+    border-left: 2px solid var(--accent);
+    border-radius: 4px;
+  }
+  .cd-section {
+    margin-bottom: 18px;
+  }
+  .cd-section-title {
+    font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .cd-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+  }
+  .cd-stat {
+    padding: 10px 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    text-align: center;
+  }
+  .cd-stat-value {
+    font-family: 'Fraunces', serif;
+    font-size: 20px; font-weight: 600;
+    color: var(--cream); line-height: 1.1;
+    margin-bottom: 2px;
+  }
+  .cd-stat-value.hot { color: var(--hot); }
+  .cd-stat-value.warm { color: var(--warm); }
+  .cd-stat-value.cool { color: var(--cool); }
+  .cd-stat-label {
+    font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim); font-weight: 600;
+  }
+  .cd-list-item {
+    padding: 8px 12px; margin-bottom: 4px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    font-size: 13px; color: var(--text);
+    cursor: pointer;
+    transition: border-color 0.12s;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px;
+  }
+  .cd-list-item:hover { border-color: var(--accent); color: var(--accent); }
+  .cd-list-item .cdi-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  /* ====== WELCOME OVERLAY ====== */
+  .welcome-overlay {
+    position: fixed; inset: 0;
+    background: radial-gradient(1200px 600px at 20% 10%, rgba(218,119,86,0.1), transparent 60%),
+                radial-gradient(800px 500px at 80% 90%, rgba(107,155,212,0.08), transparent 60%),
+                rgba(13, 13, 22, 0.92);
+    backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center;
+    z-index: 800; padding: 20px;
+  }
+  .welcome-overlay.show { display: flex; }
+  .welcome-card {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--border); border-radius: 18px;
+    padding: 40px 42px;
+    width: 100%; max-width: 520px;
+    max-height: 92vh; overflow-y: auto;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    position: relative;
+    animation: welcomeIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes welcomeIn {
+    from { transform: translateY(10px) scale(0.98); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .welcome-card::before {
+    content: ""; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .welcome-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .welcome-brand .brand-mark { width: 36px; height: 36px; font-size: 17px; }
+  .welcome-brand .brand-name {
+    font-size: 13px; letter-spacing: 0.2em;
+    font-weight: 700; color: var(--cream);
+  }
+  .welcome-headline {
+    font-family: 'Fraunces', serif;
+    font-weight: 600; font-size: 30px;
+    line-height: 1.2; letter-spacing: -0.01em;
+    color: var(--cream); margin-bottom: 14px;
+  }
+  .welcome-headline em { color: var(--accent); font-style: italic; white-space: nowrap; }
+  .welcome-tagline {
+    color: var(--text-muted);
+    font-size: 14px; line-height: 1.6;
+    margin-bottom: 26px; max-width: 440px;
+  }
+  .welcome-label {
+    display: block; font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-dim); font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .welcome-input {
+    width: 100%;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; color: var(--text);
+    margin-bottom: 14px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .welcome-input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-softer);
+  }
+  .welcome-start {
+    width: 100%; padding: 14px;
+    font-size: 14px; font-weight: 600;
+    border-radius: 10px; letter-spacing: 0.02em;
+    background: var(--accent); color: #1a1a2e;
+    transition: all 0.15s;
+    box-shadow: 0 2px 12px rgba(218,119,86,0.25);
+  }
+  .welcome-start:hover:not(:disabled) {
+    background: var(--accent-hover); transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(218,119,86,0.35);
+  }
+  .welcome-start:disabled { opacity: 0.45; cursor: not-allowed; }
+  .welcome-notes {
+    margin-top: 22px; padding-top: 22px;
+    border-top: 1px solid var(--border-soft);
+    display: flex; flex-direction: column; gap: 8px;
+    font-size: 12px; color: var(--text-muted); line-height: 1.55;
+  }
+  .welcome-notes > div { display: flex; gap: 10px; }
+  .welcome-notes .check { color: var(--accent); flex-shrink: 0; font-weight: 700; }
+  .welcome-credit {
+    margin-top: 26px; padding-top: 20px;
+    border-top: 1px solid var(--border-soft);
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.7;
+  }
+  .welcome-credit .credit-name {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.18em; color: var(--accent);
+  }
+  .welcome-credit .credit-line {
+    font-size: 10px; letter-spacing: 0.14em;
+    color: var(--text-dim); font-weight: 500;
+  }
+
+  /* Settings modal specific */
+  .settings-section {
+    margin-bottom: 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .settings-section:last-child { border-bottom: none; }
+  .settings-label {
+    display: block;
+    font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim); font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .settings-help {
+    font-size: 12px; color: var(--text-dim);
+    margin-top: 4px;
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .settings-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 10px;
+  }
+  .settings-row input[type="text"], .settings-row input[type="date"] {
+    flex: 1;
+    padding: 9px 12px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 13px;
+    color: var(--text);
+    margin-bottom: 0;
+  }
+  .settings-btn-group {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+
+  /* ====== RESPONSIVE ====== */
+  @media (max-width: 860px) {
+    .main { grid-template-columns: 1fr; }
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: 260px; z-index: 400;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    }
+    .sidebar.open { transform: translateX(0); }
+    .menu-toggle { display: inline-flex !important; }
+    .topbar { padding: 12px 16px; gap: 10px; }
+    .subject-header { padding: 16px 18px 0; }
+    .tabs { padding: 10px 18px 0; }
+    .panels { padding: 20px 18px 40px; }
+    .welcome-card { padding: 30px 24px; }
+    .welcome-headline { font-size: 22px; }
+    .model-badge, .save-indicator { display: none; }
+    .footer { padding: 8px 16px; font-size: 10px; gap: 8px; }
+    .footer-right { gap: 10px; }
+    .archive-name { min-width: 90px; font-size: 11px; }
+    .graph-container { height: 420px; }
+  }
+  .menu-toggle {
+    display: none; width: 36px; height: 36px;
+    border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    align-items: center; justify-content: center; font-size: 18px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">≡</button>
+    <div class="brand">
+      <div class="brand-mark">P</div>
+      <span class="brand-name">PUZZLE<span class="brand-dot">.</span>AI</span>
+    </div>
+    <div class="topbar-right">
+      <span class="save-indicator" id="saveIndicator" title="Auto-save status"><span class="si-dot"></span><span id="saveLabel">Saved</span></span>
+      <button class="tb-btn" id="settingsBtn" title="Export / Import / Sync settings">⚙ Settings</button>
+      <span class="model-badge" id="modelBadge">claude-sonnet-4-6</span>
+      <div id="connArea"></div>
+    </div>
+  </header>
+
+  <main class="main">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">Subjects</div>
+        <div class="subject-count" id="subjectCount">0 / 5</div>
+      </div>
+      <div class="subject-list" id="subjectList"></div>
+      <div class="add-subject-wrap">
+        <button class="add-subject-btn" id="addSubjectBtn">＋ Add subject</button>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <div class="subject-header">
+        <h1 id="activeSubjectName">—</h1>
+        <span class="subtext" id="activeSubjectSub"></span>
+      </div>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="context-fixed"><span class="tab-number">01</span>Context · Fixed</button>
+        <button class="tab" data-tab="context-session"><span class="tab-number">02</span>Context · Session</button>
+        <button class="tab" data-tab="transcript"><span class="tab-number">03</span>Transcript</button>
+        <button class="tab" data-tab="summary"><span class="tab-number">04</span>Summary</button>
+        <button class="tab" data-tab="quiz"><span class="tab-number">05</span>Quiz</button>
+        <button class="tab" data-tab="ontology"><span class="tab-number">06</span>Ontology</button>
+        <button class="tab prep" data-tab="prep"><span class="tab-number">07</span>Exam Prep <span class="tab-badge" id="prepBadge" style="display:none">!</span></button>
+      </nav>
+
+      <div class="panels" id="panels">
+
+        <div class="panel active" data-panel="context-fixed">
+          <div class="panel-intro">
+            <h2>Context · Fixed <span class="tag-inline">SEMESTER</span></h2>
+            <p>Upload stable reference material for the whole semester — textbooks, syllabi, lecture outlines. These files form the <strong>backbone concepts</strong> of your subject and persist across all sessions.</p>
+          </div>
+          <div class="dropzone" data-dz="fixed">
+            <div class="dropzone-icon">⤓</div>
+            <div class="dropzone-title">Drag files here or click to upload</div>
+            <div class="dropzone-sub">.pdf, .txt, .md — each file auto-named MMDDYYYY-N</div>
+            <input type="file" multiple accept=".pdf,.txt,.md,.markdown" />
+          </div>
+          <div class="file-list" data-filelist="fixed"></div>
+          <div class="info-note">📌 Files persist across sessions on this browser. Scoped to a hash of your API key.</div>
+        </div>
+
+        <div class="panel" data-panel="context-session">
+          <div class="panel-intro">
+            <h2>Context · Session <span class="tag-inline">TODAY</span></h2>
+            <p>Upload only today's class slides or chapter material. All previously uploaded session files are kept and visible below.</p>
+          </div>
+          <div class="dropzone" data-dz="session">
+            <div class="dropzone-icon">⤓</div>
+            <div class="dropzone-title">Upload today's slides</div>
+            <div class="dropzone-sub">.pdf, .txt, .md</div>
+            <input type="file" multiple accept=".pdf,.txt,.md,.markdown" />
+          </div>
+          <div class="file-list" data-filelist="session"></div>
+          <div class="info-note">🔄 Each upload is saved with its own MMDDYYYY-N name. Remove old files to reduce context size.</div>
+        </div>
+
+        <div class="panel" data-panel="transcript">
+          <div class="panel-intro">
+            <h2>Transcript</h2>
+            <p>Paste today's lecture transcript (e.g. from Otter AI). Auto-saved with this subject.</p>
+          </div>
+          <textarea id="transcriptTA" class="transcript-ta" placeholder="Paste your lecture transcript here..."></textarea>
+          <div class="ta-meta">
+            <span id="transcriptMeta">0 characters · 0 words</span>
+            <button id="clearTranscript">Clear</button>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="summary">
+          <div class="panel-intro">
+            <h2>Summary</h2>
+            <p>Extract <strong>key concepts, term definitions, and lecture flow</strong> from the transcript. Each generation saves as a new MMDDYYYY-N entry. Click any <em>concept chip</em> to see stats, related lectures, and quiz performance.</p>
+          </div>
+          <div class="actions-row">
+            <button class="btn btn-primary" id="genSummaryBtn">Generate summary</button>
+            <span class="action-hint" id="summaryHint"></span>
+          </div>
+          <div class="view-banner" id="summaryViewBanner">
+            <span class="vb-label">VIEWING</span>
+            <span class="vb-name" id="summaryViewName">—</span>
+            <button class="vb-back" id="summaryBackBtn">← Back to latest</button>
+          </div>
+          <div id="summaryResult"></div>
+          <div class="archive-block">
+            <div class="archive-header">
+              <span class="archive-title">Summary Archive</span>
+              <span class="archive-count" id="summaryArchiveCount">0 items</span>
+            </div>
+            <div class="archive-list" id="summaryArchiveList"></div>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="quiz">
+          <div class="panel-intro">
+            <h2>Quiz</h2>
+            <p>Generate 10 understanding-check questions. <strong>Mark each as correct or wrong</strong> — accuracy per concept is tracked automatically and surfaces in Exam Prep.</p>
+          </div>
+          <div class="actions-row">
+            <button class="btn btn-primary" id="genQuizBtn">Generate quiz</button>
+            <button class="btn btn-secondary" id="genWeakQuizBtn" style="display:none">Generate weak-concept quiz</button>
+            <span class="action-hint" id="quizHint"></span>
+          </div>
+          <div class="view-banner" id="quizViewBanner">
+            <span class="vb-label">VIEWING</span>
+            <span class="vb-name" id="quizViewName">—</span>
+            <button class="vb-back" id="quizBackBtn">← Back to latest</button>
+          </div>
+          <div id="quizResult"></div>
+          <div class="archive-block">
+            <div class="archive-header">
+              <span class="archive-title">Quiz Archive</span>
+              <span class="archive-count" id="quizArchiveCount">0 items</span>
+            </div>
+            <div class="archive-list" id="quizArchiveList"></div>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="ontology">
+          <div class="panel-intro">
+            <h2>Ontology</h2>
+            <p>Cross-reference all three sources and <strong>merge into a living graph</strong>. Sort by importance (🔥 concepts appear in many lectures = likely exam topics). Click any concept for deep stats. Switch between list and graph view.</p>
+          </div>
+          <div class="ontology-controls">
+            <button class="btn btn-primary" id="genOntologyBtn">Extract &amp; merge</button>
+            <div class="toggle-row">
+              <button class="toggle-btn active" data-ont-filter="all">All</button>
+              <button class="toggle-btn" data-ont-filter="both">Core (BOTH)</button>
+              <button class="toggle-btn" data-ont-filter="hot">🔥 Hot only</button>
+              <button class="toggle-btn" data-ont-filter="weak">Weak only</button>
+            </div>
+            <div class="toggle-row">
+              <button class="toggle-btn active" data-ont-view="list">List</button>
+              <button class="toggle-btn" data-ont-view="graph">Graph</button>
+            </div>
+            <div class="toggle-row">
+              <button class="toggle-btn active" data-ont-sort="importance">By importance</button>
+              <button class="toggle-btn" data-ont-sort="name">A–Z</button>
+              <button class="toggle-btn" data-ont-sort="accuracy">By weakness</button>
+            </div>
+            <button class="btn btn-ghost" id="resetOntologyBtn">Reset ontology</button>
+          </div>
+          <div id="ontologyResult"></div>
+          <div class="archive-block">
+            <div class="archive-header">
+              <span class="archive-title">Merge History</span>
+              <span class="archive-count" id="ontologyArchiveCount">0 merges</span>
+            </div>
+            <div class="archive-list" id="ontologyArchiveList"></div>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="prep">
+          <div class="panel-intro">
+            <h2>Exam Prep Dashboard</h2>
+            <p>Progress, weak concepts, high-frequency topics, and a recommended study order. Updated every time you grade a quiz or generate a summary.</p>
+          </div>
+          <div id="prepResult"></div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div>PUZZLE.AI</div>
+    <div class="footer-right">
+      <span>Work auto-saves to this browser</span>
+      <span>· Scoped by API key</span>
+      <span id="syncFooterStatus">· Sync: off</span>
+      <span>· Built with Claude by <a href="https://linkedin.com/in/sangyunkim" target="_blank" rel="noopener">Sangyun Kim</a></span>
+    </div>
+  </footer>
+</div>
+
+<div class="welcome-overlay" id="welcomeOverlay">
+  <div class="welcome-card">
+    <div class="welcome-brand">
+      <div class="brand-mark">P</div>
+      <span class="brand-name">PUZZLE<span class="brand-dot">.</span>AI</span>
+    </div>
+    <h1 class="welcome-headline">Turn lectures into<br><em>structured&nbsp;knowledge</em></h1>
+    <p class="welcome-tagline">Upload your textbook and today's slides, paste your lecture transcript, and let Claude generate a structured summary, an understanding-check quiz, and a living concept ontology — all auto-saved to your browser.</p>
+
+    <label class="welcome-label" for="welcomeKey">Claude API key</label>
+    <input id="welcomeKey" class="welcome-input" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off" />
+    <button class="welcome-start" id="welcomeStart">Start</button>
+
+    <div class="welcome-notes">
+      <div><span class="check">✓</span><span>Need a key? Create one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com/settings/keys</a>.</span></div>
+      <div><span class="check">✓</span><span>Your plain key never leaves this browser. Work is saved under a <strong>SHA-256 hash</strong> of the key — enter the same key later to restore everything.</span></div>
+      <div><span class="check">✓</span><span>Storage is per-browser (IndexedDB). Enable Cloud Sync in Settings for cross-device access.</span></div>
+    </div>
+
+    <div class="welcome-credit">
+      <div class="credit-name">SANGYUN KIM</div>
+      <div class="credit-line">I.H. ASPER SCHOOL OF BUSINESS</div>
+      <div class="credit-line">ALL RIGHTS RESERVED.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Generic input modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalBox">
+    <h3 id="modalTitle">Title</h3>
+    <p id="modalDesc">Description</p>
+    <input id="modalInput" placeholder="" />
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="modalCancel">Cancel</button>
+      <button class="btn btn-primary" id="modalConfirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settingsOverlay">
+  <div class="modal lg">
+    <h3>Settings</h3>
+    <p>Manage backup, sync, and exam preferences. These settings are per browser.</p>
+
+    <div class="settings-section">
+      <div class="settings-label">Export / Import</div>
+      <div class="settings-help">Download a JSON snapshot of everything (subjects, archives, ontology) for backup or transfer to another browser/device. Import merges into the current workspace.</div>
+      <div class="settings-btn-group">
+        <button class="btn btn-secondary" id="exportJsonBtn">⤓ Export JSON</button>
+        <button class="btn btn-secondary" id="importJsonBtn">⤒ Import JSON</button>
+        <input type="file" id="importFileInput" accept=".json,application/json" style="display:none" />
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-label">Cloud sync (optional)</div>
+      <div class="settings-help">Set your Cloudflare Worker endpoint URL to sync across browsers and devices. Your API key is never sent — only its SHA-256 hash is used as a namespace. See the worker.js + DEPLOY.md files shipped alongside this HTML.</div>
+      <div class="settings-row">
+        <input type="text" id="syncUrlInput" placeholder="https://your-worker.yoursubdomain.workers.dev" spellcheck="false" autocomplete="off" />
+      </div>
+      <div class="settings-btn-group">
+        <button class="btn btn-secondary" id="saveSyncUrlBtn">Save URL</button>
+        <button class="btn btn-secondary" id="syncPullBtn">↓ Pull from cloud</button>
+        <button class="btn btn-secondary" id="syncPushBtn">↑ Push to cloud</button>
+        <button class="btn btn-ghost" id="syncClearBtn">Disable</button>
+      </div>
+      <div id="syncStatus" style="margin-top:10px;font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;"></div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-label">Exam date (for countdown in Prep dashboard)</div>
+      <div class="settings-row">
+        <input type="date" id="examDateInput" />
+        <button class="btn btn-secondary" id="saveExamDateBtn">Save</button>
+        <button class="btn btn-ghost" id="clearExamDateBtn">Clear</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-label">Danger zone</div>
+      <div class="settings-help">Delete everything for the current API key. This is irreversible.</div>
+      <button class="btn btn-ghost" id="wipeWorkspaceBtn" style="color:var(--error)">Wipe current workspace</button>
+    </div>
+
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-primary" id="settingsCloseBtn">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Concept detail modal -->
+<div class="modal-overlay" id="conceptDetailOverlay">
+  <div class="modal lg">
+    <div id="conceptDetailBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="conceptDetailCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+<script>
+'use strict';
+
+// ============================================================
+// CONFIG
+// ============================================================
+const MAX_SUBJECTS = 5;
+const MODEL = 'claude-sonnet-4-6';
+const MAX_TOKENS = 8000;
+const DB_NAME = 'puzzle-ai';
+const DB_VERSION = 1;
+
+// ============================================================
+// INDEXEDDB
+// ============================================================
+class IDB {
+  constructor(name, version) { this.name = name; this.version = version; this._dbP = null; }
+  _open() {
+    if (this._dbP) return this._dbP;
+    this._dbP = new Promise((resolve, reject) => {
+      const req = indexedDB.open(this.name, this.version);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return this._dbP;
+  }
+  async get(key) {
+    const db = await this._open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readonly');
+      const req = tx.objectStore('kv').get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async set(key, value) {
+    const db = await this._open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async delete(key) {
+    const db = await this._open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+}
+const storage = new IDB(DB_NAME, DB_VERSION);
+
+async function sha256Hex(text) {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  apiKey: '',
+  keyHash: '',
+  activeSubjectId: null,
+  activeTab: 'context-fixed',
+  subjects: {},
+  subjectOrder: [],
+  dailyCounter: {},
+  settings: {
+    syncUrl: '',
+    examDate: ''
+  },
+  ontFilter: 'all',
+  ontView: 'list',
+  ontSort: 'importance',
+  view: { summary: null, quiz: null },
+  quizFilter: 'all'  // 'all' | 'weak'
+};
+
+function makeSubject(name) {
+  const id = 'subj_' + Math.random().toString(36).slice(2, 9);
+  return {
+    id, name,
+    contextFixed: [], contextSession: [],
+    transcript: '',
+    summaryArchive: [],
+    quizArchive: [],
+    ontology: { concepts: [], relations: [] },
+    ontologyHistory: [],
+    // New: per-concept analytics (derived+persisted)
+    conceptStats: {}
+    // conceptStats schema:
+    // { normalizedName: {
+    //     name: "original",
+    //     appearances: number,         // count across summaries
+    //     sessionIds: [summaryId, ...],
+    //     quizQuestions: number,       // total quiz q's this concept appeared in
+    //     quizCorrect: number,         // user-graded correct
+    //     quizWrong: number            // user-graded wrong
+    //   }
+    // }
+  };
+}
+
+// ============================================================
+// DATE / ARTIFACT NAMING
+// ============================================================
+function todayKey() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${mm}${dd}${d.getFullYear()}`;
+}
+function nextArtifactName() {
+  const day = todayKey();
+  if (!state.dailyCounter[day]) state.dailyCounter[day] = 0;
+  state.dailyCounter[day] += 1;
+  return `${day}-${state.dailyCounter[day]}`;
+}
+function shortId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+function formatTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yd = new Date(now); yd.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yd.toDateString();
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return `Today · ${timeStr}`;
+  if (isYesterday) return `Yesterday · ${timeStr}`;
+  return `${d.toLocaleDateString()} · ${timeStr}`;
+}
+
+function normalize(s) { return (s || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+
+// ============================================================
+// PERSISTENCE
+// ============================================================
+let _saveTimer = null;
+function scheduleSave(delay = 500) {
+  if (!state.keyHash) return;
+  setSaveStatus('saving');
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => { doSave(); }, delay);
+}
+async function doSave() {
+  if (!state.keyHash) return;
+  const payload = {
+    version: 2,
+    subjects: state.subjects,
+    subjectOrder: state.subjectOrder,
+    activeSubjectId: state.activeSubjectId,
+    dailyCounter: state.dailyCounter,
+    settings: state.settings,
+    savedAt: Date.now()
+  };
+  try {
+    await storage.set(`ws:${state.keyHash}`, payload);
+    setSaveStatus('saved');
+    // Fire-and-forget cloud sync if enabled
+    if (state.settings.syncUrl) {
+      syncPush(true).catch(err => console.warn('Background sync push failed:', err.message));
+    }
+  } catch (err) {
+    console.error('Save failed:', err);
+    setSaveStatus('error');
+    toast('Auto-save failed: ' + err.message, 'error');
+  }
+}
+
+async function loadForKeyHash(keyHash) {
+  try {
+    const payload = await storage.get(`ws:${keyHash}`);
+    if (!payload) return false;
+    applyPayload(payload);
+    return true;
+  } catch (err) {
+    console.error('Load failed:', err);
+    return false;
+  }
+}
+
+function applyPayload(payload) {
+  state.subjects = payload.subjects || {};
+  state.subjectOrder = payload.subjectOrder || [];
+  state.activeSubjectId = payload.activeSubjectId || state.subjectOrder[0] || null;
+  state.dailyCounter = payload.dailyCounter || {};
+  state.settings = Object.assign({ syncUrl: '', examDate: '' }, payload.settings || {});
+  // Backfill
+  Object.values(state.subjects).forEach(s => {
+    if (!s.summaryArchive) s.summaryArchive = [];
+    if (!s.quizArchive) s.quizArchive = [];
+    if (!s.ontologyHistory) s.ontologyHistory = [];
+    if (!s.ontology) s.ontology = { concepts: [], relations: [] };
+    if (!s.contextFixed) s.contextFixed = [];
+    if (!s.contextSession) s.contextSession = [];
+    if (!s.conceptStats) s.conceptStats = {};
+    // Ensure quizArchive entries have grading fields
+    s.quizArchive.forEach(q => {
+      if (q.data) q.data.forEach(item => {
+        if (item.grading === undefined) item.grading = null; // null|'correct'|'wrong'
+        if (!Array.isArray(item.concept_tags)) item.concept_tags = [];
+      });
+    });
+  });
+}
+
+function setSaveStatus(status) {
+  const el = document.getElementById('saveIndicator');
+  const lbl = document.getElementById('saveLabel');
+  el.classList.toggle('saving', status === 'saving');
+  if (status === 'saving') lbl.textContent = 'Saving…';
+  else if (status === 'saved') lbl.textContent = 'Saved';
+  else if (status === 'error') lbl.textContent = 'Save error';
+  else lbl.textContent = status;
+}
+
+// ============================================================
+// CLOUD SYNC (optional Cloudflare Worker)
+// ============================================================
+// Expected Worker API:
+//   POST {url}/workspace/{keyHash}  body: {payload, updatedAt}
+//   GET  {url}/workspace/{keyHash}  -> {payload, updatedAt} or 404
+// See DEPLOY.md for the worker.js reference implementation.
+
+async function syncPush(silent = false) {
+  if (!state.settings.syncUrl || !state.keyHash) {
+    if (!silent) toast('Set a Sync URL in Settings first.', 'error');
+    return;
+  }
+  const payload = {
+    version: 2,
+    subjects: state.subjects,
+    subjectOrder: state.subjectOrder,
+    activeSubjectId: state.activeSubjectId,
+    dailyCounter: state.dailyCounter,
+    settings: { examDate: state.settings.examDate }, // don't push syncUrl itself
+    savedAt: Date.now()
+  };
+  const url = state.settings.syncUrl.replace(/\/$/, '') + '/workspace/' + state.keyHash;
+  if (!silent) setSyncStatus('Pushing…');
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload, updatedAt: Date.now() })
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!silent) {
+      setSyncStatus('Pushed ' + new Date().toLocaleTimeString());
+      toast('Pushed to cloud.', 'success');
+    }
+    updateFooterSyncStatus();
+  } catch (err) {
+    if (!silent) {
+      setSyncStatus('Push failed: ' + err.message);
+      toast('Sync push failed: ' + err.message, 'error');
+    }
+    throw err;
+  }
+}
+
+async function syncPull() {
+  if (!state.settings.syncUrl || !state.keyHash) {
+    toast('Set a Sync URL in Settings first.', 'error');
+    return;
+  }
+  const url = state.settings.syncUrl.replace(/\/$/, '') + '/workspace/' + state.keyHash;
+  setSyncStatus('Pulling…');
+  try {
+    const resp = await fetch(url);
+    if (resp.status === 404) {
+      setSyncStatus('No cloud data found for this key.');
+      toast('No cloud data for this key yet. Push first.', 'info');
+      return;
+    }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const body = await resp.json();
+    if (!body || !body.payload) throw new Error('Malformed response');
+    if (!confirm('Cloud data found. Replace local workspace with cloud version? Your current local changes will be overwritten.')) {
+      setSyncStatus('Pull cancelled.');
+      return;
+    }
+    // Preserve local syncUrl setting
+    const localSyncUrl = state.settings.syncUrl;
+    applyPayload(body.payload);
+    state.settings.syncUrl = localSyncUrl;
+    if (!state.subjectOrder.length) {
+      const first = makeSubject('Subject 1');
+      state.subjects[first.id] = first;
+      state.subjectOrder.push(first.id);
+      state.activeSubjectId = first.id;
+    }
+    renderAll();
+    await doSave();
+    setSyncStatus('Pulled ' + new Date().toLocaleTimeString());
+    toast('Cloud data loaded.', 'success');
+    updateFooterSyncStatus();
+  } catch (err) {
+    setSyncStatus('Pull failed: ' + err.message);
+    toast('Sync pull failed: ' + err.message, 'error');
+  }
+}
+
+function setSyncStatus(msg) {
+  const el = document.getElementById('syncStatus');
+  if (el) el.textContent = msg;
+}
+function updateFooterSyncStatus() {
+  const el = document.getElementById('syncFooterStatus');
+  if (!el) return;
+  if (!state.settings.syncUrl) el.textContent = '· Sync: off';
+  else el.textContent = '· Sync: on';
+}
+// ============================================================
+// INIT / EVENT WIRING
+// ============================================================
+async function init() {
+  // Topbar buttons
+  document.getElementById('addSubjectBtn').addEventListener('click', onAddSubject);
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+  document.getElementById('menuToggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+
+  // Welcome
+  document.getElementById('welcomeStart').addEventListener('click', onWelcomeStart);
+  document.getElementById('welcomeKey').addEventListener('keydown', e => { if (e.key === 'Enter') onWelcomeStart(); });
+
+  // Dropzones
+  document.querySelectorAll('.dropzone').forEach(dz => {
+    const input = dz.querySelector('input[type=file]');
+    dz.addEventListener('click', () => input.click());
+    input.addEventListener('change', e => handleFiles(e.target.files, dz.dataset.dz));
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('dragover');
+      handleFiles(e.dataTransfer.files, dz.dataset.dz);
+    });
+  });
+
+  // Transcript
+  const ta = document.getElementById('transcriptTA');
+  ta.addEventListener('input', e => {
+    const s = getActiveSubject(); if (!s) return;
+    s.transcript = e.target.value;
+    updateTranscriptMeta();
+    scheduleSave();
+  });
+  document.getElementById('clearTranscript').addEventListener('click', () => {
+    const s = getActiveSubject(); if (!s) return;
+    s.transcript = ''; ta.value = ''; updateTranscriptMeta();
+    scheduleSave();
+  });
+
+  // Generate buttons
+  document.getElementById('genSummaryBtn').addEventListener('click', generateSummary);
+  document.getElementById('genQuizBtn').addEventListener('click', () => generateQuiz(false));
+  document.getElementById('genWeakQuizBtn').addEventListener('click', () => generateQuiz(true));
+  document.getElementById('genOntologyBtn').addEventListener('click', generateOntology);
+
+  // Back-to-latest buttons
+  document.getElementById('summaryBackBtn').addEventListener('click', () => { state.view.summary = null; renderSummary(); });
+  document.getElementById('quizBackBtn').addEventListener('click', () => { state.view.quiz = null; renderQuiz(); });
+
+  // Ontology reset
+  document.getElementById('resetOntologyBtn').addEventListener('click', () => {
+    const s = getActiveSubject(); if (!s) return;
+    if (confirm(`Reset the ontology for "${s.name}"?\nThis wipes the cumulative graph, merge history, AND concept stats (accuracy/appearances) for this subject.`)) {
+      s.ontology = { concepts: [], relations: [] };
+      s.ontologyHistory = [];
+      s.conceptStats = {};
+      renderOntology();
+      renderPrep();
+      scheduleSave(0);
+      toast('Ontology reset.', 'info');
+    }
+  });
+
+  // Ontology toggle groups
+  document.querySelectorAll('[data-ont-filter]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('[data-ont-filter]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      state.ontFilter = b.dataset.ontFilter;
+      renderOntology();
+    });
+  });
+  document.querySelectorAll('[data-ont-view]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('[data-ont-view]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      state.ontView = b.dataset.ontView;
+      renderOntology();
+    });
+  });
+  document.querySelectorAll('[data-ont-sort]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('[data-ont-sort]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      state.ontSort = b.dataset.ontSort;
+      renderOntology();
+    });
+  });
+
+  // Settings modal
+  document.getElementById('settingsCloseBtn').addEventListener('click', closeSettings);
+  document.getElementById('exportJsonBtn').addEventListener('click', exportJson);
+  document.getElementById('importJsonBtn').addEventListener('click', () => document.getElementById('importFileInput').click());
+  document.getElementById('importFileInput').addEventListener('change', importJson);
+  document.getElementById('saveSyncUrlBtn').addEventListener('click', saveSyncUrl);
+  document.getElementById('syncPullBtn').addEventListener('click', syncPull);
+  document.getElementById('syncPushBtn').addEventListener('click', () => syncPush(false));
+  document.getElementById('syncClearBtn').addEventListener('click', clearSyncUrl);
+  document.getElementById('saveExamDateBtn').addEventListener('click', saveExamDate);
+  document.getElementById('clearExamDateBtn').addEventListener('click', clearExamDate);
+  document.getElementById('wipeWorkspaceBtn').addEventListener('click', wipeWorkspace);
+
+  // Concept detail close
+  document.getElementById('conceptDetailCloseBtn').addEventListener('click', () => {
+    document.getElementById('conceptDetailOverlay').classList.remove('show');
+  });
+  document.getElementById('conceptDetailOverlay').addEventListener('click', e => {
+    if (e.target.id === 'conceptDetailOverlay') e.currentTarget.classList.remove('show');
+  });
+
+  // Default subject
+  const first = makeSubject('Subject 1');
+  state.subjects[first.id] = first;
+  state.subjectOrder.push(first.id);
+  state.activeSubjectId = first.id;
+
+  setSaveStatus('—');
+  renderConnArea();
+  renderSubjects();
+  renderWorkspace();
+  updateFooterSyncStatus();
+  showWelcome();
+}
+
+// ============================================================
+// WELCOME
+// ============================================================
+function showWelcome() {
+  document.getElementById('welcomeOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('welcomeKey').focus(), 100);
+}
+function hideWelcome() { document.getElementById('welcomeOverlay').classList.remove('show'); }
+
+async function onWelcomeStart() {
+  const key = document.getElementById('welcomeKey').value.trim();
+  if (!key) { toast('Please paste your Claude API key.', 'error'); return; }
+  if (!key.startsWith('sk-ant-')) {
+    if (!confirm('That key doesn\'t look like a standard Anthropic key (expected prefix: sk-ant-). Continue anyway?')) return;
+  }
+  const btn = document.getElementById('welcomeStart');
+  btn.disabled = true; btn.textContent = 'Connecting…';
+
+  try {
+    const hash = await sha256Hex(key);
+    state.apiKey = key;
+    state.keyHash = hash;
+
+    const loaded = await loadForKeyHash(hash);
+    if (!loaded) {
+      state.dailyCounter = {};
+    }
+    if (!state.subjectOrder.length) {
+      const first = makeSubject('Subject 1');
+      state.subjects[first.id] = first;
+      state.subjectOrder.push(first.id);
+      state.activeSubjectId = first.id;
+    }
+    if (!state.activeSubjectId) state.activeSubjectId = state.subjectOrder[0];
+
+    hideWelcome();
+    renderAll();
+    setSaveStatus('saved');
+    updateFooterSyncStatus();
+
+    if (loaded) {
+      const totalArchive = Object.values(state.subjects).reduce(
+        (n, s) => n + (s.summaryArchive?.length || 0) + (s.quizArchive?.length || 0) + (s.ontologyHistory?.length || 0), 0);
+      toast(`Welcome back — restored ${state.subjectOrder.length} subject(s), ${totalArchive} archived item(s).`, 'success');
+    } else {
+      toast('Connected. Fresh workspace ready.', 'success');
+    }
+  } catch (err) {
+    toast(err.message || 'Failed to connect.', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Start';
+  }
+}
+
+function renderConnArea() {
+  const area = document.getElementById('connArea');
+  area.innerHTML = '';
+  if (state.apiKey) {
+    const tail = state.apiKey.slice(-6);
+    const pill = document.createElement('button');
+    pill.className = 'conn-pill';
+    pill.title = 'Change API key (switches workspace)';
+    pill.innerHTML = `<span class="dot"></span>Connected <span class="key-fragment">···${escapeHtml(tail)}</span><span class="conn-edit">change</span>`;
+    pill.addEventListener('click', () => {
+      document.getElementById('welcomeKey').value = '';
+      showWelcome();
+    });
+    area.appendChild(pill);
+  } else {
+    const btn = document.createElement('button');
+    btn.className = 'conn-pill-empty';
+    btn.textContent = '＋ Connect API key';
+    btn.addEventListener('click', showWelcome);
+    area.appendChild(btn);
+  }
+}
+
+function renderAll() {
+  renderConnArea();
+  renderSubjects();
+  renderWorkspace();
+}
+
+// ============================================================
+// SUBJECTS
+// ============================================================
+function renderSubjects() {
+  const list = document.getElementById('subjectList');
+  list.innerHTML = '';
+  state.subjectOrder.forEach((id, idx) => {
+    const s = state.subjects[id];
+    const item = document.createElement('div');
+    item.className = 'subject-item' + (id === state.activeSubjectId ? ' active' : '');
+    item.innerHTML = `
+      <div class="subject-icon">${String(idx + 1).padStart(2, '0')}</div>
+      <div class="subject-name">${escapeHtml(s.name)}</div>
+      <button class="subject-delete" title="Delete" aria-label="Delete">✕</button>
+    `;
+    item.addEventListener('click', e => {
+      if (e.target.closest('.subject-delete')) return;
+      selectSubject(id);
+    });
+    item.querySelector('.subject-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      onDeleteSubject(id);
+    });
+    list.appendChild(item);
+  });
+  document.getElementById('subjectCount').textContent = `${state.subjectOrder.length} / ${MAX_SUBJECTS}`;
+  document.getElementById('addSubjectBtn').disabled = state.subjectOrder.length >= MAX_SUBJECTS;
+}
+
+function selectSubject(id) {
+  state.activeSubjectId = id;
+  state.view.summary = null;
+  state.view.quiz = null;
+  document.getElementById('sidebar').classList.remove('open');
+  renderSubjects();
+  renderWorkspace();
+  scheduleSave();
+}
+
+function onAddSubject() {
+  if (state.subjectOrder.length >= MAX_SUBJECTS) {
+    toast(`Maximum of ${MAX_SUBJECTS} subjects reached.`, 'error'); return;
+  }
+  openModal({
+    title: 'New subject',
+    desc: 'Name your subject (e.g. "Financial Accounting", "Econometrics").',
+    placeholder: 'Subject name',
+    confirmLabel: 'Create',
+    onConfirm: (value) => {
+      const name = (value || '').trim();
+      if (!name) { toast('Please enter a subject name.', 'error'); return; }
+      const s = makeSubject(name);
+      state.subjects[s.id] = s;
+      state.subjectOrder.push(s.id);
+      state.activeSubjectId = s.id;
+      renderSubjects();
+      renderWorkspace();
+      scheduleSave(0);
+      toast(`Created "${name}".`, 'success');
+    }
+  });
+}
+
+function onDeleteSubject(id) {
+  const s = state.subjects[id]; if (!s) return;
+  if (state.subjectOrder.length === 1) { toast('You must keep at least one subject.', 'error'); return; }
+  if (!confirm(`Delete "${s.name}"?\nAll data in this subject will be lost.`)) return;
+  delete state.subjects[id];
+  state.subjectOrder = state.subjectOrder.filter(x => x !== id);
+  if (state.activeSubjectId === id) state.activeSubjectId = state.subjectOrder[0];
+  renderSubjects();
+  renderWorkspace();
+  scheduleSave(0);
+  toast('Deleted.', 'info');
+}
+
+function getActiveSubject() { return state.subjects[state.activeSubjectId] || null; }
+
+// ============================================================
+// TABS / WORKSPACE
+// ============================================================
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+  renderWorkspace();
+}
+
+function renderWorkspace() {
+  const s = getActiveSubject(); if (!s) return;
+  document.getElementById('activeSubjectName').textContent = s.name;
+  document.getElementById('activeSubjectSub').textContent = `· ${MODEL}`;
+  renderFileList('fixed');
+  renderFileList('session');
+  document.getElementById('transcriptTA').value = s.transcript || '';
+  updateTranscriptMeta();
+  renderSummary();
+  renderQuiz();
+  renderOntology();
+  renderPrep();
+  updateActionHints();
+  updatePrepBadge();
+}
+
+function updateActionHints() {
+  const s = getActiveSubject(); if (!s) return;
+  const sh = document.getElementById('summaryHint');
+  const qh = document.getElementById('quizHint');
+  sh.textContent = !s.transcript.trim() ? 'Paste a transcript first (tab 03).' : '';
+  qh.textContent = !s.summaryArchive.length ? 'Generate a summary first (tab 04).' : '';
+  // Show weak-quiz button if there's ≥1 weak concept
+  const weak = computeWeakConcepts(s);
+  document.getElementById('genWeakQuizBtn').style.display = weak.length ? '' : 'none';
+}
+
+function updatePrepBadge() {
+  const s = getActiveSubject(); if (!s) return;
+  const weak = computeWeakConcepts(s);
+  const badge = document.getElementById('prepBadge');
+  if (weak.length >= 3) {
+    badge.style.display = 'inline-block';
+    badge.textContent = weak.length;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ============================================================
+// FILE HANDLING
+// ============================================================
+async function handleFiles(fileList, dzType) {
+  const s = getActiveSubject(); if (!s) return;
+  const key = dzType === 'fixed' ? 'contextFixed' : 'contextSession';
+  for (const file of fileList) {
+    try {
+      const parsed = await readFile(file);
+      parsed.id = shortId();
+      parsed.name_alias = nextArtifactName();
+      parsed.ts = Date.now();
+      s[key].push(parsed);
+    } catch (err) { toast(`${file.name}: ${err.message}`, 'error'); }
+  }
+  renderFileList(dzType);
+  scheduleSave(0);
+}
+
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isText = /\.(txt|md|markdown)$/i.test(file.name) || file.type.startsWith('text/');
+    if (!isPdf && !isText) { reject(new Error('Only .pdf, .txt, and .md files are supported.')); return; }
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.onload = () => {
+      if (isPdf) {
+        const base64 = String(reader.result).split(',')[1] || '';
+        resolve({ name: file.name, size: file.size, kind: 'pdf', base64 });
+      } else {
+        resolve({ name: file.name, size: file.size, kind: 'text', content: String(reader.result) });
+      }
+    };
+    if (isPdf) reader.readAsDataURL(file); else reader.readAsText(file);
+  });
+}
+
+function renderFileList(dzType) {
+  const s = getActiveSubject(); if (!s) return;
+  const key = dzType === 'fixed' ? 'contextFixed' : 'contextSession';
+  const container = document.querySelector(`[data-filelist="${dzType}"]`);
+  container.innerHTML = '';
+  if (!s[key].length) { container.innerHTML = '<div class="empty-files">No files uploaded yet.</div>'; return; }
+  const items = s[key].slice().reverse();
+  items.forEach((f) => {
+    const el = document.createElement('div');
+    el.className = 'file-item';
+    el.innerHTML = `
+      <div class="file-icon">${f.kind === 'pdf' ? 'PDF' : 'TXT'}</div>
+      <div class="file-meta">
+        <div class="file-name">${escapeHtml(f.name)}</div>
+        <div class="file-sub">
+          <span class="file-label">${escapeHtml(f.name_alias || '')}</span>
+          <span>${formatBytes(f.size)}</span>
+          <span>${f.ts ? formatTime(f.ts) : ''}</span>
+        </div>
+      </div>
+      <button class="file-remove" aria-label="Remove">✕ remove</button>
+    `;
+    el.querySelector('.file-remove').addEventListener('click', () => {
+      const idx = s[key].indexOf(f);
+      if (idx >= 0) s[key].splice(idx, 1);
+      renderFileList(dzType);
+      scheduleSave(0);
+    });
+    container.appendChild(el);
+  });
+}
+
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function updateTranscriptMeta() {
+  const s = getActiveSubject();
+  const txt = s ? s.transcript || '' : '';
+  const words = txt.trim() ? txt.trim().split(/\s+/).length : 0;
+  document.getElementById('transcriptMeta').textContent =
+    `${txt.length.toLocaleString()} characters · ${words.toLocaleString()} words`;
+  updateActionHints();
+}
+
+// ============================================================
+// API CALL
+// ============================================================
+async function callClaude({ system, userContent }) {
+  if (!state.apiKey) { showWelcome(); throw new Error('Connect your Claude API key to continue.'); }
+  const body = {
+    model: MODEL, max_tokens: MAX_TOKENS, system,
+    messages: [{ role: 'user', content: userContent }]
+  };
+  let resp;
+  try {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(body)
+    });
+  } catch (err) { throw new Error('Network error: ' + err.message); }
+  if (!resp.ok) {
+    let errText = '';
+    try { const j = await resp.json(); errText = j.error?.message || JSON.stringify(j); }
+    catch { errText = await resp.text(); }
+    throw new Error(`API error (${resp.status}): ${errText}`);
+  }
+  const data = await resp.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  if (!text) throw new Error('Empty response from the model.');
+  return text;
+}
+
+function buildContextBlocks(files, label) {
+  const blocks = [];
+  const textFiles = files.filter(f => f.kind === 'text');
+  const pdfFiles = files.filter(f => f.kind === 'pdf');
+  if (textFiles.length) {
+    let combined = '';
+    textFiles.forEach(f => { combined += `\n\n===== [${label}] ${f.name} =====\n${f.content}\n`; });
+    blocks.push({ type: 'text', text: combined });
+  }
+  pdfFiles.forEach(f => {
+    blocks.push({
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data: f.base64 },
+      title: `[${label}] ${f.name}`
+    });
+  });
+  return blocks;
+}
+// ============================================================
+// CONCEPT STATS ENGINE
+// ============================================================
+// These functions maintain s.conceptStats as the single source of truth
+// for analytics across all tabs.
+
+function ensureConceptStat(s, name) {
+  const key = normalize(name);
+  if (!s.conceptStats[key]) {
+    s.conceptStats[key] = {
+      name: name,
+      appearances: 0,
+      sessionIds: [],
+      quizQuestions: 0,
+      quizCorrect: 0,
+      quizWrong: 0
+    };
+  }
+  // keep the nicest-looking name (longest non-normalized form)
+  if (name && name.length > (s.conceptStats[key].name?.length || 0)) {
+    s.conceptStats[key].name = name;
+  }
+  return s.conceptStats[key];
+}
+
+function recordSummaryConcepts(s, summaryEntry) {
+  const concepts = summaryEntry.data?.concepts || [];
+  concepts.forEach(c => {
+    const stat = ensureConceptStat(s, c);
+    stat.appearances += 1;
+    if (!stat.sessionIds.includes(summaryEntry.id)) {
+      stat.sessionIds.push(summaryEntry.id);
+    }
+  });
+  // Terms too — they're also concepts
+  (summaryEntry.data?.terms || []).forEach(t => {
+    if (t.term) {
+      const stat = ensureConceptStat(s, t.term);
+      // Don't double-count appearance if already counted via 'concepts'
+      if (!stat.sessionIds.includes(summaryEntry.id)) {
+        stat.appearances += 1;
+        stat.sessionIds.push(summaryEntry.id);
+      }
+    }
+  });
+}
+
+function unrecordSummaryConcepts(s, summaryEntry) {
+  // Used when deleting a summary from archive
+  const touched = new Set();
+  (summaryEntry.data?.concepts || []).forEach(c => touched.add(normalize(c)));
+  (summaryEntry.data?.terms || []).forEach(t => { if (t.term) touched.add(normalize(t.term)); });
+  touched.forEach(key => {
+    const stat = s.conceptStats[key];
+    if (!stat) return;
+    stat.sessionIds = stat.sessionIds.filter(id => id !== summaryEntry.id);
+    stat.appearances = Math.max(0, stat.appearances - 1);
+    if (stat.appearances === 0 && stat.quizQuestions === 0) {
+      delete s.conceptStats[key];
+    }
+  });
+}
+
+function recordQuizQuestionConcepts(s, question) {
+  (question.concept_tags || []).forEach(c => {
+    const stat = ensureConceptStat(s, c);
+    stat.quizQuestions += 1;
+  });
+}
+
+function recordQuizGrading(s, question, isCorrect) {
+  (question.concept_tags || []).forEach(c => {
+    const stat = ensureConceptStat(s, c);
+    if (isCorrect) stat.quizCorrect += 1;
+    else stat.quizWrong += 1;
+  });
+}
+
+function unrecordQuizGrading(s, question, wasCorrect) {
+  (question.concept_tags || []).forEach(c => {
+    const stat = s.conceptStats[normalize(c)];
+    if (!stat) return;
+    if (wasCorrect) stat.quizCorrect = Math.max(0, stat.quizCorrect - 1);
+    else stat.quizWrong = Math.max(0, stat.quizWrong - 1);
+  });
+}
+
+function conceptAccuracy(stat) {
+  const total = (stat.quizCorrect || 0) + (stat.quizWrong || 0);
+  if (!total) return null;
+  return stat.quizCorrect / total;
+}
+
+function conceptImportance(stat) {
+  // Simple heuristic: appearances weighted heavier than quiz volume
+  return (stat.appearances || 0) * 3 + Math.min(stat.quizQuestions || 0, 6);
+}
+
+function computeWeakConcepts(s) {
+  // Return concepts with ≥2 quiz attempts AND accuracy < 0.7
+  return Object.values(s.conceptStats)
+    .filter(st => {
+      const total = st.quizCorrect + st.quizWrong;
+      if (total < 2) return false;
+      return st.quizCorrect / total < 0.7;
+    })
+    .sort((a, b) => {
+      const accA = a.quizCorrect / (a.quizCorrect + a.quizWrong);
+      const accB = b.quizCorrect / (b.quizCorrect + b.quizWrong);
+      return accA - accB;
+    });
+}
+
+function computeHotConcepts(s) {
+  // Concepts appearing in ≥2 summaries OR flagged 'BOTH' in ontology
+  const bothSet = new Set((s.ontology.concepts || []).filter(c => c.source === 'BOTH').map(c => normalize(c.name)));
+  return Object.values(s.conceptStats)
+    .filter(st => st.appearances >= 2 || bothSet.has(normalize(st.name)))
+    .sort((a, b) => conceptImportance(b) - conceptImportance(a));
+}
+
+// ============================================================
+// SUMMARY
+// ============================================================
+async function generateSummary() {
+  const s = getActiveSubject(); if (!s) return;
+  if (!state.apiKey) { showWelcome(); return; }
+  if (!s.transcript.trim()) { toast('Paste a transcript first.', 'error'); switchTab('transcript'); return; }
+
+  const btn = document.getElementById('genSummaryBtn');
+  setBtnLoading(btn, true, 'Analyzing...');
+
+  try {
+    const system = `You are a study assistant that converts university lecture transcripts into structured study notes.
+
+Respond ONLY in the following JSON format (no code fences, no explanation):
+
+{
+  "title": "A short 3-7 word headline for this lecture",
+  "concepts": ["key concept 1", "key concept 2", ...],
+  "terms": [{"term": "term", "definition": "1-2 sentence definition"}, ...],
+  "flow": "A 2-4 paragraph narrative summarizing how the lecture unfolded."
+}
+
+Rules:
+- Match the primary language of the transcript.
+- Only reflect what the transcript actually contains. No speculation.
+- "concepts" should be 5-12 canonical concept names (not phrases or sentences).
+- For technical terms, include the original English/Latin form in parentheses when useful.`;
+
+    const userContent = [
+      { type: 'text', text: `LECTURE TRANSCRIPT:\n\n${s.transcript}\n\nReturn the JSON now.` }
+    ];
+
+    const raw = await callClaude({ system, userContent });
+    const parsed = extractJson(raw);
+
+    const entry = {
+      id: shortId(),
+      name: nextArtifactName(),
+      ts: Date.now(),
+      data: parsed
+    };
+    s.summaryArchive.push(entry);
+    recordSummaryConcepts(s, entry);
+    state.view.summary = null;
+    renderSummary();
+    renderOntology();
+    renderPrep();
+    updateActionHints();
+    updatePrepBadge();
+    scheduleSave(0);
+    toast(`Summary saved as ${entry.name}.`, 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+    document.getElementById('summaryResult').innerHTML =
+      `<div class="empty-state"><h4>Generation failed</h4><p>${escapeHtml(err.message)}</p></div>`;
+  } finally {
+    setBtnLoading(btn, false, 'Generate summary');
+  }
+}
+
+function getDisplayedSummary(s) {
+  if (state.view.summary) {
+    return s.summaryArchive.find(e => e.id === state.view.summary) || null;
+  }
+  return s.summaryArchive.length ? s.summaryArchive[s.summaryArchive.length - 1] : null;
+}
+
+function renderSummary() {
+  const s = getActiveSubject(); if (!s) return;
+  const div = document.getElementById('summaryResult');
+  const banner = document.getElementById('summaryViewBanner');
+  const entry = getDisplayedSummary(s);
+
+  const isViewingOld = state.view.summary && entry;
+  banner.classList.toggle('show', !!isViewingOld);
+  if (isViewingOld) document.getElementById('summaryViewName').textContent = entry.name;
+
+  if (!entry) {
+    div.innerHTML = `<div class="empty-state">
+      <div class="es-icon">∅</div>
+      <h4>No summary yet</h4>
+      <p>Paste a lecture transcript in tab 03, then click <em>Generate summary</em>.</p>
+      <div class="es-steps">
+        <div><strong>01</strong> Paste transcript in tab 03</div>
+        <div><strong>02</strong> Click <em>Generate summary</em></div>
+        <div><strong>03</strong> Review concepts, terms, and flow</div>
+      </div>
+    </div>`;
+  } else {
+    const sm = entry.data;
+    let html = `<div style="margin-bottom:12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.08em;">${escapeHtml(entry.name)} · ${formatTime(entry.ts)}</div>`;
+    if (sm.concepts?.length) {
+      const chips = sm.concepts.map(c =>
+        `<span class="concept-chip" data-concept="${escapeHtml(c)}">${escapeHtml(c)}</span>`
+      ).join('');
+      html += `<div class="result-card"><h3>${escapeHtml(sm.title || 'Key concepts')}</h3>${chips}</div>`;
+    }
+    if (sm.terms?.length) {
+      html += `<div class="result-card"><h3>Term definitions</h3><dl>${sm.terms.map(t => `<dt>${escapeHtml(t.term)}</dt><dd>${escapeHtml(t.definition)}</dd>`).join('')}</dl></div>`;
+    }
+    if (sm.flow) {
+      html += `<div class="result-card"><h3>Lecture flow</h3><p>${escapeHtml(sm.flow).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p></div>`;
+    }
+    div.innerHTML = html || `<div class="empty-state"><h4>Could not parse</h4><p>The response couldn't be parsed. Try again.</p></div>`;
+
+    // Wire concept chips
+    div.querySelectorAll('.concept-chip').forEach(el => {
+      el.addEventListener('click', () => openConceptDetail(el.dataset.concept));
+    });
+  }
+
+  renderArchive('summary', s.summaryArchive, entry?.id);
+}
+
+// ============================================================
+// QUIZ
+// ============================================================
+async function generateQuiz(weakFocus = false) {
+  const s = getActiveSubject(); if (!s) return;
+  if (!state.apiKey) { showWelcome(); return; }
+  if (!s.summaryArchive.length) { toast('Generate a summary first.', 'error'); switchTab('summary'); return; }
+
+  const btn = weakFocus ? document.getElementById('genWeakQuizBtn') : document.getElementById('genQuizBtn');
+  setBtnLoading(btn, true, 'Generating...');
+
+  try {
+    const latestSummary = s.summaryArchive[s.summaryArchive.length - 1].data;
+    const weakList = computeWeakConcepts(s).slice(0, 6).map(st => st.name);
+
+    let system = `You are a university-level assessment designer.
+Create 10 questions that test UNDERSTANDING, not memorization. Mix multiple-choice (4 options) and short-answer formats.
+
+CRITICAL: For each question, include a "concept_tags" array listing 1-3 specific concept names from the Summary's concepts/terms that this question tests. These tags MUST exactly match names from the Summary (case-insensitive). This is used for accuracy tracking.
+
+Respond ONLY in this JSON format (no code fences):
+
+{
+  "questions": [
+    {
+      "type": "multiple_choice",
+      "question": "Question text",
+      "choices": ["A) ...", "B) ...", "C) ...", "D) ..."],
+      "answer": "B",
+      "concept_tags": ["Concept Name 1", "Concept Name 2"],
+      "explanation": "Why this is correct and why the distractors aren't."
+    },
+    {
+      "type": "short_answer",
+      "question": "Question text",
+      "answer": "Model answer",
+      "concept_tags": ["Concept Name"],
+      "explanation": "Key reasoning."
+    }
+  ]
+}
+
+Rules:
+- 10 questions total, mix of both types.
+- Match the language of the Summary.
+- Focus on concept application, comparison, cause-and-effect, implications. Avoid pure recall.
+- Distractors should be plausible.
+- EVERY question MUST include concept_tags with 1-3 entries.`;
+
+    if (weakFocus && weakList.length) {
+      system += `\n\nSPECIAL FOCUS: The user has struggled with these specific concepts. Weight 70% of questions toward these. Make questions that address common misunderstandings:\n${weakList.map(c => '- ' + c).join('\n')}`;
+    }
+
+    const userContent = [
+      { type: 'text', text: 'SUMMARY (JSON):\n\n' + JSON.stringify(latestSummary, null, 2) }
+    ];
+    userContent.push(...buildContextBlocks(s.contextSession, 'SESSION-SLIDE'));
+    userContent.push({ type: 'text', text: '\nReturn 10 understanding-check questions now.' });
+
+    const raw = await callClaude({ system, userContent });
+    const parsed = extractJson(raw);
+    const questions = (parsed.questions || []).map(q => ({
+      ...q,
+      concept_tags: Array.isArray(q.concept_tags) ? q.concept_tags : [],
+      grading: null,
+      userAnswer: null
+    }));
+
+    const entry = {
+      id: shortId(),
+      name: nextArtifactName(),
+      ts: Date.now(),
+      focusWeak: !!weakFocus,
+      data: questions
+    };
+    s.quizArchive.push(entry);
+
+    // Record concept appearances in quizzes (for "quizQuestions" count)
+    questions.forEach(q => recordQuizQuestionConcepts(s, q));
+
+    state.view.quiz = null;
+    renderQuiz();
+    renderPrep();
+    scheduleSave(0);
+    toast(`Quiz saved as ${entry.name}${weakFocus ? ' (weak-focus)' : ''}.`, 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+    document.getElementById('quizResult').innerHTML =
+      `<div class="empty-state"><h4>Generation failed</h4><p>${escapeHtml(err.message)}</p></div>`;
+  } finally {
+    setBtnLoading(btn, false, weakFocus ? 'Generate weak-concept quiz' : 'Generate quiz');
+  }
+}
+
+function getDisplayedQuiz(s) {
+  if (state.view.quiz) {
+    return s.quizArchive.find(e => e.id === state.view.quiz) || null;
+  }
+  return s.quizArchive.length ? s.quizArchive[s.quizArchive.length - 1] : null;
+}
+
+function quizScore(entry) {
+  if (!entry || !entry.data) return { correct: 0, wrong: 0, pending: 0, total: 0 };
+  let correct = 0, wrong = 0, pending = 0;
+  entry.data.forEach(q => {
+    if (q.grading === 'correct') correct++;
+    else if (q.grading === 'wrong') wrong++;
+    else pending++;
+  });
+  return { correct, wrong, pending, total: entry.data.length };
+}
+
+function renderQuiz() {
+  const s = getActiveSubject(); if (!s) return;
+  const div = document.getElementById('quizResult');
+  const banner = document.getElementById('quizViewBanner');
+  const entry = getDisplayedQuiz(s);
+
+  const isViewingOld = state.view.quiz && entry;
+  banner.classList.toggle('show', !!isViewingOld);
+  if (isViewingOld) document.getElementById('quizViewName').textContent = entry.name;
+
+  if (!entry || !entry.data.length) {
+    div.innerHTML = `<div class="empty-state">
+      <div class="es-icon">∅</div>
+      <h4>No quiz yet</h4>
+      <p>Generate a summary first, then return here to create understanding-check questions. Grade each question to track your progress.</p>
+    </div>`;
+    renderArchive('quiz', s.quizArchive, null);
+    return;
+  }
+
+  const score = quizScore(entry);
+  const accuracy = score.correct + score.wrong === 0 ? null : (score.correct / (score.correct + score.wrong));
+  const accuracyStr = accuracy === null ? '—' : `${Math.round(accuracy * 100)}%`;
+
+  let header = `<div style="margin-bottom:12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.08em;">${escapeHtml(entry.name)} · ${formatTime(entry.ts)} · ${entry.data.length} questions${entry.focusWeak ? ' · WEAK-FOCUS' : ''}</div>`;
+
+  let summaryCard = `<div class="quiz-score-summary">
+    <div>
+      <div class="score-big">${score.correct} / ${score.total} <span style="font-size:14px;color:var(--text-muted);">(${accuracyStr})</span></div>
+      <div class="score-meta">${score.correct} correct · ${score.wrong} wrong · ${score.pending} ungraded</div>
+    </div>
+    <div class="quiz-filter-bar">
+      <button class="filter-chip ${state.quizFilter === 'all' ? 'active' : ''}" data-qfilter="all">All</button>
+      <button class="filter-chip ${state.quizFilter === 'wrong' ? 'active' : ''}" data-qfilter="wrong">Wrong only</button>
+      <button class="filter-chip ${state.quizFilter === 'pending' ? 'active' : ''}" data-qfilter="pending">Ungraded</button>
+    </div>
+  </div>`;
+
+  const filtered = entry.data.map((q, i) => ({ q, i })).filter(({ q }) => {
+    if (state.quizFilter === 'all') return true;
+    if (state.quizFilter === 'wrong') return q.grading === 'wrong';
+    if (state.quizFilter === 'pending') return q.grading === null;
+    return true;
+  });
+
+  const questionsHtml = filtered.map(({ q, i }) => {
+    const isMc = q.type === 'multiple_choice';
+    const graded = q.grading !== null;
+    const conceptChips = (q.concept_tags || []).map(c =>
+      `<span class="concept-chip" data-concept="${escapeHtml(c)}">${escapeHtml(c)}</span>`
+    ).join('');
+
+    let choicesHtml = '';
+    if (isMc && q.choices) {
+      choicesHtml = `<div class="quiz-choices">${q.choices.map(c => {
+        const letter = c.trim()[0];
+        let cls = 'quiz-choice';
+        if (graded) {
+          cls += ' disabled';
+          if (letter === q.answer) cls += ' correct';
+          else if (q.userAnswer === letter) cls += ' wrong';
+        } else if (q.userAnswer === letter) {
+          cls += ' selected';
+        }
+        return `<div class="${cls}" data-choice="${escapeHtml(letter)}" data-qidx="${i}">${escapeHtml(c)}</div>`;
+      }).join('')}</div>`;
+    } else {
+      const val = q.userAnswer || '';
+      choicesHtml = `<div class="quiz-short">
+        <input type="text" data-qidx="${i}" placeholder="Your answer..." value="${escapeHtml(val)}" ${graded ? 'disabled' : ''}/>
+      </div>`;
+    }
+
+    const actionsHtml = `<div class="quiz-actions">
+      <button class="quiz-mini-btn correct" data-grade="correct" data-qidx="${i}" ${q.grading === 'correct' ? 'disabled' : ''}>✓ Mark correct</button>
+      <button class="quiz-mini-btn wrong" data-grade="wrong" data-qidx="${i}" ${q.grading === 'wrong' ? 'disabled' : ''}>✗ Mark wrong</button>
+      ${graded ? `<button class="quiz-mini-btn" data-grade="reset" data-qidx="${i}" style="color:var(--text-dim)">Reset</button>` : ''}
+      <button class="quiz-answer-toggle" data-qidx="${i}">▸ ${graded ? 'Show' : 'Reveal'} answer</button>
+    </div>`;
+
+    const typeLabel = isMc ? 'Multiple choice' : 'Short answer';
+    const gradeCls = q.grading === 'correct' ? 'answered-correct' : (q.grading === 'wrong' ? 'answered-wrong' : '');
+
+    return `<div class="quiz-item ${gradeCls}">
+      <div class="q-num">
+        <span>QUESTION ${String(i+1).padStart(2,'0')} ${q.grading === 'correct' ? '· ✓' : (q.grading === 'wrong' ? '· ✗' : '')}</span>
+        <span class="q-type">${typeLabel}</span>
+      </div>
+      <div class="q-body">${escapeHtml(q.question)}</div>
+      ${conceptChips ? `<div class="q-concepts">${conceptChips}</div>` : ''}
+      ${choicesHtml}
+      ${actionsHtml}
+      <div class="quiz-answer" data-ans="${i}">
+        <strong>Answer:</strong> ${escapeHtml(q.answer || '')}
+        ${q.explanation ? `<div style="margin-top:6px;color:var(--text-muted)"><strong>Explanation:</strong> ${escapeHtml(q.explanation)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  div.innerHTML = header + summaryCard + (filtered.length ? questionsHtml : '<div class="archive-empty">No questions match this filter.</div>');
+
+  wireQuizInteractions(div, entry, s);
+  renderArchive('quiz', s.quizArchive, entry?.id);
+}
+
+function wireQuizInteractions(div, entry, s) {
+  // Filter chips
+  div.querySelectorAll('[data-qfilter]').forEach(b => {
+    b.addEventListener('click', () => {
+      state.quizFilter = b.dataset.qfilter;
+      renderQuiz();
+    });
+  });
+
+  // Multiple choice selection (only if ungraded)
+  div.querySelectorAll('.quiz-choice:not(.disabled)').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.qidx);
+      const choice = el.dataset.choice;
+      const q = entry.data[idx];
+      if (q.grading !== null) return;
+      q.userAnswer = choice;
+      renderQuiz();
+      scheduleSave();
+    });
+  });
+
+  // Short answer input
+  div.querySelectorAll('.quiz-short input').forEach(el => {
+    el.addEventListener('input', () => {
+      const idx = parseInt(el.dataset.qidx);
+      entry.data[idx].userAnswer = el.value;
+      scheduleSave();
+    });
+  });
+
+  // Grading buttons
+  div.querySelectorAll('[data-grade]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.qidx);
+      const grade = btn.dataset.grade;
+      const q = entry.data[idx];
+      const prev = q.grading;
+      if (prev !== null) unrecordQuizGrading(s, q, prev === 'correct');
+      if (grade === 'reset') {
+        q.grading = null;
+      } else {
+        q.grading = grade;
+        recordQuizGrading(s, q, grade === 'correct');
+      }
+      renderQuiz();
+      renderPrep();
+      updatePrepBadge();
+      updateActionHints();
+      scheduleSave(0);
+    });
+  });
+
+  // Answer toggle
+  div.querySelectorAll('.quiz-answer-toggle').forEach(b => {
+    b.addEventListener('click', () => {
+      const idx = b.dataset.qidx;
+      const ans = div.querySelector(`[data-ans="${idx}"]`);
+      if (!ans) return;
+      const shown = ans.classList.toggle('show');
+      b.textContent = shown ? '▾ Hide answer' : '▸ Show answer';
+    });
+  });
+
+  // Concept chips
+  div.querySelectorAll('.concept-chip').forEach(el => {
+    el.addEventListener('click', () => openConceptDetail(el.dataset.concept));
+  });
+}
+// ============================================================
+// ONTOLOGY
+// ============================================================
+async function generateOntology() {
+  const s = getActiveSubject(); if (!s) return;
+  if (!state.apiKey) { showWelcome(); return; }
+  if (!s.summaryArchive.length) { toast('Generate a summary first.', 'error'); switchTab('summary'); return; }
+  if (!s.contextFixed.length && !s.contextSession.length) {
+    if (!confirm('No Fixed/Session context uploaded. Continue with Summary only?')) return;
+  }
+
+  const btn = document.getElementById('genOntologyBtn');
+  setBtnLoading(btn, true, 'Extracting...');
+
+  try {
+    const latestSummary = s.summaryArchive[s.summaryArchive.length - 1].data;
+    const existing = s.ontology;
+    const system = `You are an academic knowledge ontology extractor.
+You receive three sources and extract concepts and relations:
+
+[FIXED]   = textbook / syllabus → backbone / upper-level concepts
+[SESSION] = today's slides → detailed / derivative / lower-level concepts
+[SUMMARY] = transcript summary → the actual connections the instructor drew
+
+Concept source tag:
+- "FIXED"   : appears only in [FIXED]
+- "SESSION" : appears only in [SESSION]
+- "BOTH"    : appears in BOTH (core concept)
+
+Relation types: "hierarchy" | "prerequisite" | "contrast" | "application" | "extension"
+
+Respond ONLY in this JSON format (no code fences):
+{
+  "concepts": [
+    {"name": "concept name", "description": "1-sentence definition", "source": "FIXED"|"SESSION"|"BOTH"}
+  ],
+  "relations": [
+    {"type": "...", "from": "concept A", "to": "concept B", "description": "why they relate"}
+  ]
+}
+
+Rules:
+- Concept names: concise (max 30 chars).
+- Match the language of the Summary.
+- Only extract what actually appears. No speculation.
+- See existing ontology to avoid duplicates.`;
+
+    const userContent = [];
+    userContent.push({ type: 'text', text: 'EXISTING ONTOLOGY (for deduplication):\n' + JSON.stringify(existing, null, 2) });
+    userContent.push({ type: 'text', text: '\n===== SUMMARY =====\n' + JSON.stringify(latestSummary, null, 2) });
+    const fixedBlocks = buildContextBlocks(s.contextFixed, 'FIXED');
+    const sessionBlocks = buildContextBlocks(s.contextSession, 'SESSION');
+    if (fixedBlocks.length) { userContent.push({ type: 'text', text: '\n===== FIXED CONTEXT =====' }); userContent.push(...fixedBlocks); }
+    if (sessionBlocks.length) { userContent.push({ type: 'text', text: '\n===== SESSION CONTEXT =====' }); userContent.push(...sessionBlocks); }
+    userContent.push({ type: 'text', text: '\nExtract concepts and relations now.' });
+
+    const raw = await callClaude({ system, userContent });
+    const parsed = extractJson(raw);
+
+    const before = { c: s.ontology.concepts.length, r: s.ontology.relations.length };
+    mergeOntology(s.ontology, parsed.concepts || [], parsed.relations || []);
+    const after = { c: s.ontology.concepts.length, r: s.ontology.relations.length };
+
+    const entry = {
+      id: shortId(),
+      name: nextArtifactName(),
+      ts: Date.now(),
+      deltaConcepts: after.c - before.c,
+      deltaRelations: after.r - before.r,
+      newTotalC: after.c,
+      newTotalR: after.r
+    };
+    s.ontologyHistory.push(entry);
+
+    renderOntology();
+    renderPrep();
+    scheduleSave(0);
+    toast(`Merged as ${entry.name} — +${entry.deltaConcepts} concepts, +${entry.deltaRelations} relations.`, 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+    document.getElementById('ontologyResult').innerHTML =
+      `<div class="empty-state"><h4>Generation failed</h4><p>${escapeHtml(err.message)}</p></div>`;
+  } finally {
+    setBtnLoading(btn, false, 'Extract & merge');
+  }
+}
+
+function mergeOntology(target, newConcepts, newRelations) {
+  const map = new Map();
+  target.concepts.forEach(c => map.set(normalize(c.name), c));
+  newConcepts.forEach(nc => {
+    if (!nc.name) return;
+    const key = normalize(nc.name);
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { name: nc.name, description: nc.description || '', source: nc.source || 'SESSION' });
+    } else {
+      existing.source = promoteSource(existing.source, nc.source);
+      if (!existing.description && nc.description) existing.description = nc.description;
+      else if (nc.description && nc.description.length > (existing.description?.length || 0)) existing.description = nc.description;
+    }
+  });
+  target.concepts = Array.from(map.values());
+
+  const relSet = new Set(target.relations.map(relKey));
+  newRelations.forEach(r => {
+    if (!r.from || !r.to || !r.type) return;
+    const key = relKey(r);
+    if (!relSet.has(key)) {
+      target.relations.push({ type: r.type, from: r.from, to: r.to, description: r.description || '' });
+      relSet.add(key);
+    }
+  });
+}
+
+function promoteSource(oldTag, newTag) {
+  if (!oldTag) return newTag;
+  if (!newTag) return oldTag;
+  if (oldTag === 'BOTH' || newTag === 'BOTH') return 'BOTH';
+  if (oldTag !== newTag) return 'BOTH';
+  return oldTag;
+}
+function relKey(r) { return `${r.type}::${normalize(r.from)}::${normalize(r.to)}`; }
+
+function renderOntology() {
+  const s = getActiveSubject(); if (!s) return;
+  const div = document.getElementById('ontologyResult');
+  const ont = s.ontology;
+
+  if (!ont.concepts.length && !ont.relations.length) {
+    div.innerHTML = `<div class="empty-state">
+      <div class="es-icon">◎</div>
+      <h4>No ontology yet</h4>
+      <p>The ontology grows across sessions. Each run merges new concepts/relations and promotes overlapping ones to <strong>BOTH</strong>.</p>
+      <div class="es-steps">
+        <div><strong>01</strong> Upload Fixed context (syllabus/textbook)</div>
+        <div><strong>02</strong> Upload today's Session slides</div>
+        <div><strong>03</strong> Generate Summary</div>
+        <div><strong>04</strong> Click <em>Extract &amp; merge</em></div>
+      </div>
+    </div>`;
+    renderOntologyHistory(s);
+    return;
+  }
+
+  let concepts = ont.concepts.slice();
+  if (state.ontFilter === 'both') concepts = concepts.filter(c => c.source === 'BOTH');
+  if (state.ontFilter === 'hot') {
+    const hotKeys = new Set(computeHotConcepts(s).map(st => normalize(st.name)));
+    concepts = concepts.filter(c => hotKeys.has(normalize(c.name)));
+  }
+  if (state.ontFilter === 'weak') {
+    const weakKeys = new Set(computeWeakConcepts(s).map(st => normalize(st.name)));
+    concepts = concepts.filter(c => weakKeys.has(normalize(c.name)));
+  }
+  let relations = ont.relations.slice();
+  const visibleNames = new Set(concepts.map(c => normalize(c.name)));
+  relations = relations.filter(r => visibleNames.has(normalize(r.from)) && visibleNames.has(normalize(r.to)));
+
+  if (state.ontView === 'graph') {
+    renderOntologyGraph(s, concepts, relations);
+    renderOntologyHistory(s);
+    return;
+  }
+
+  const getStat = (c) => s.conceptStats[normalize(c.name)] || null;
+  concepts.sort((a, b) => {
+    if (state.ontSort === 'name') return a.name.localeCompare(b.name);
+    if (state.ontSort === 'accuracy') {
+      const ga = getStat(a), gb = getStat(b);
+      const aa = ga ? conceptAccuracy(ga) : null;
+      const bb = gb ? conceptAccuracy(gb) : null;
+      const av = aa === null ? 999 : aa;
+      const bv = bb === null ? 999 : bb;
+      return av - bv;
+    }
+    const sa = getStat(a), sb = getStat(b);
+    return (sb ? conceptImportance(sb) : 0) - (sa ? conceptImportance(sa) : 0);
+  });
+
+  const bySource = { BOTH: [], FIXED: [], SESSION: [] };
+  concepts.forEach(c => (bySource[c.source] || bySource.SESSION).push(c));
+
+  const renderItem = (c) => {
+    const st = getStat(c);
+    const importance = st ? conceptImportance(st) : 0;
+    const acc = st ? conceptAccuracy(st) : null;
+    const accClass = acc === null ? '' : (acc < 0.5 ? 'accuracy-hot' : (acc < 0.75 ? 'accuracy-warm' : 'accuracy-cool'));
+    const accStr = acc === null ? '' : `${Math.round(acc * 100)}%`;
+    const hotIcon = importance >= 12 ? '🔥 ' : (importance >= 6 ? '⭐ ' : '');
+    const appearances = st?.appearances || 0;
+    const qTotal = st ? st.quizCorrect + st.quizWrong : 0;
+
+    return `<div class="concept-item${c.source === 'BOTH' ? ' is-both' : ''}" data-concept="${escapeHtml(c.name)}">
+      <span class="tag tag-${c.source}">${c.source}</span>
+      <div style="flex:1">
+        <div class="concept-name">${hotIcon}${escapeHtml(c.name)}</div>
+        ${c.description ? `<div class="concept-desc">${escapeHtml(c.description)}</div>` : ''}
+        <div class="concept-metrics">
+          <span class="metric ${appearances >= 3 ? 'hot' : (appearances >= 2 ? 'warm' : '')}">📚 ${appearances} lecture${appearances !== 1 ? 's' : ''}</span>
+          ${qTotal > 0
+            ? `<span class="metric ${accClass}">✓ ${accStr} (${qTotal} q)</span>`
+            : `<span class="metric">— untested</span>`}
+        </div>
+      </div>
+    </div>`;
+  };
+
+  const conceptHtml = ['BOTH', 'FIXED', 'SESSION'].map(grp => {
+    if (!bySource[grp].length) return '';
+    const items = bySource[grp].map(renderItem).join('');
+    return `<div class="concept-group">
+      <div class="concept-group-head">${grp} · ${bySource[grp].length}</div>
+      ${items}
+    </div>`;
+  }).join('');
+
+  const relLabelMap = {
+    hierarchy: 'HIERARCHY', prerequisite: 'PREREQUISITE', contrast: 'CONTRAST',
+    application: 'APPLICATION', extension: 'EXTENSION'
+  };
+  const relationHtml = relations.length
+    ? relations.map(r => `<div class="relation-item">
+        <span class="rel-type">${relLabelMap[r.type] || r.type}</span>
+        <span class="rel-from-to">${escapeHtml(r.from)} <span class="rel-arrow">→</span> ${escapeHtml(r.to)}</span>
+        ${r.description ? `<div class="rel-desc">${escapeHtml(r.description)}</div>` : ''}
+      </div>`).join('')
+    : '<div class="empty-files">No relations match this filter.</div>';
+
+  div.innerHTML = `
+    <div class="ont-section">
+      <h3>Concepts (${concepts.length})</h3>
+      ${conceptHtml || '<div class="empty-files">No concepts match this filter.</div>'}
+    </div>
+    <div class="ont-section">
+      <h3>Relations (${relations.length})</h3>
+      ${relationHtml}
+    </div>
+  `;
+
+  div.querySelectorAll('[data-concept]').forEach(el => {
+    el.addEventListener('click', () => openConceptDetail(el.dataset.concept));
+  });
+
+  renderOntologyHistory(s);
+}
+
+function renderOntologyHistory(s) {
+  const countEl = document.getElementById('ontologyArchiveCount');
+  const listEl = document.getElementById('ontologyArchiveList');
+  const hist = s.ontologyHistory || [];
+  countEl.textContent = `${hist.length} merge${hist.length === 1 ? '' : 's'}`;
+  if (!hist.length) { listEl.innerHTML = '<div class="archive-empty">No merges yet.</div>'; return; }
+  listEl.innerHTML = hist.slice().reverse().map(h => `
+    <div class="archive-item" style="cursor:default">
+      <div class="archive-name">${escapeHtml(h.name)}</div>
+      <div class="archive-body">
+        <div class="archive-preview">+${h.deltaConcepts} concepts · +${h.deltaRelations} relations · total ${h.newTotalC}C / ${h.newTotalR}R</div>
+        <div class="archive-time">${formatTime(h.ts)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// D3 ONTOLOGY GRAPH
+// ============================================================
+function renderOntologyGraph(s, concepts, relations) {
+  const div = document.getElementById('ontologyResult');
+  if (!concepts.length) {
+    div.innerHTML = '<div class="empty-files" style="padding:60px;">No concepts match this filter.</div>';
+    return;
+  }
+  div.innerHTML = `
+    <div class="graph-container" id="graphContainer">
+      <div class="graph-legend">
+        <div class="legend-row"><span class="legend-swatch" style="background:#da7756"></span>BOTH (core)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#6b9bd4"></span>FIXED</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#c89f6a"></span>SESSION</div>
+        <div class="legend-row" style="margin-top:6px;color:var(--text-dim);">size = importance</div>
+        <div class="legend-row" style="color:var(--text-dim);">red ring = weak concept</div>
+      </div>
+    </div>
+  `;
+  const container = document.getElementById('graphContainer');
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  const nodes = concepts.map(c => {
+    const st = s.conceptStats[normalize(c.name)];
+    const importance = st ? conceptImportance(st) : 0;
+    const acc = st ? conceptAccuracy(st) : null;
+    return {
+      id: normalize(c.name),
+      name: c.name,
+      source: c.source,
+      description: c.description || '',
+      importance, acc
+    };
+  });
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
+  const links = relations
+    .map(r => ({ source: normalize(r.from), target: normalize(r.to), type: r.type, description: r.description || '' }))
+    .filter(l => nodeById.has(l.source) && nodeById.has(l.target));
+
+  const svg = d3.select(container).append('svg').attr('viewBox', [0, 0, width, height]);
+  const g = svg.append('g');
+
+  const zoom = d3.zoom().scaleExtent([0.2, 4]).on('zoom', (ev) => g.attr('transform', ev.transform));
+  svg.call(zoom);
+
+  svg.append('defs').append('marker')
+    .attr('id', 'arrow').attr('viewBox', '0 -5 10 10')
+    .attr('refX', 20).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#5a5a70');
+
+  const colorMap = { BOTH: '#da7756', FIXED: '#6b9bd4', SESSION: '#c89f6a' };
+  const radiusFor = (n) => 6 + Math.min(22, (n.importance || 0) * 1.5);
+
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(90).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(d => radiusFor(d) + 8));
+
+  const link = g.append('g').attr('class', 'links').selectAll('line').data(links).join('line')
+    .attr('class', 'link')
+    .attr('stroke', '#5a5a70').attr('stroke-width', 1.2)
+    .attr('marker-end', 'url(#arrow)');
+
+  const linkLabel = g.append('g').attr('class', 'linkLabels').selectAll('text').data(links).join('text')
+    .attr('class', 'link-label').text(d => d.type);
+
+  const node = g.append('g').attr('class', 'nodes').selectAll('g').data(nodes).join('g')
+    .attr('class', 'node')
+    .call(d3.drag()
+      .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on('end', (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    )
+    .on('click', (ev, d) => openConceptDetail(d.name));
+
+  node.append('circle')
+    .attr('r', d => radiusFor(d))
+    .attr('fill', d => colorMap[d.source] || '#c89f6a')
+    .attr('stroke', d => (d.acc !== null && d.acc < 0.7) ? '#e26b6b' : '#1a1a2e')
+    .attr('stroke-width', d => (d.acc !== null && d.acc < 0.7) ? 2.5 : 2);
+
+  node.append('title')
+    .text(d => `${d.name}\n${d.description || ''}\nImportance: ${d.importance}${d.acc !== null ? '  Accuracy: ' + Math.round(d.acc*100)+'%' : ''}`);
+
+  node.append('text')
+    .attr('class', 'node-label')
+    .attr('x', d => radiusFor(d) + 4).attr('y', 4)
+    .text(d => d.name);
+
+  sim.on('tick', () => {
+    link
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    linkLabel
+      .attr('x', d => (d.source.x + d.target.x) / 2)
+      .attr('y', d => (d.source.y + d.target.y) / 2);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+}
+
+// ============================================================
+// CONCEPT DETAIL MODAL
+// ============================================================
+function openConceptDetail(conceptName) {
+  const s = getActiveSubject(); if (!s) return;
+  const key = normalize(conceptName);
+  const st = s.conceptStats[key];
+  const ontConcept = (s.ontology.concepts || []).find(c => normalize(c.name) === key);
+
+  const displayName = ontConcept?.name || st?.name || conceptName;
+  const description = ontConcept?.description || 'No definition yet. Run Extract & merge (tab 06) to generate descriptions.';
+  const source = ontConcept?.source || null;
+  const appearances = st?.appearances || 0;
+  const qCorrect = st?.quizCorrect || 0;
+  const qWrong = st?.quizWrong || 0;
+  const qTotal = qCorrect + qWrong;
+  const acc = qTotal ? qCorrect / qTotal : null;
+  const accStr = acc === null ? '—' : `${Math.round(acc * 100)}%`;
+  const accClass = acc === null ? '' : (acc < 0.5 ? 'hot' : (acc < 0.75 ? 'warm' : 'cool'));
+
+  const relatedSummaries = (st?.sessionIds || [])
+    .map(id => s.summaryArchive.find(e => e.id === id))
+    .filter(Boolean)
+    .sort((a, b) => b.ts - a.ts);
+
+  const relatedQuestions = [];
+  s.quizArchive.forEach(qz => {
+    qz.data.forEach((q, qi) => {
+      if ((q.concept_tags || []).some(c => normalize(c) === key)) {
+        relatedQuestions.push({ quiz: qz, question: q, index: qi });
+      }
+    });
+  });
+  relatedQuestions.sort((a, b) => b.quiz.ts - a.quiz.ts);
+
+  const relatedRels = (s.ontology.relations || []).filter(r =>
+    normalize(r.from) === key || normalize(r.to) === key
+  );
+
+  let html = `
+    <div class="concept-detail-header">
+      <div>
+        <div class="concept-detail-name">${escapeHtml(displayName)}</div>
+        ${source ? `<span class="tag tag-${source}" style="margin-top:8px;display:inline-block;">${source}</span>` : ''}
+      </div>
+    </div>
+    <div class="concept-detail-desc">${escapeHtml(description)}</div>
+
+    <div class="cd-section">
+      <div class="cd-section-title">Stats</div>
+      <div class="cd-stats">
+        <div class="cd-stat">
+          <div class="cd-stat-value">${appearances}</div>
+          <div class="cd-stat-label">Lectures</div>
+        </div>
+        <div class="cd-stat">
+          <div class="cd-stat-value">${qTotal}</div>
+          <div class="cd-stat-label">Q asked</div>
+        </div>
+        <div class="cd-stat">
+          <div class="cd-stat-value ${accClass}">${accStr}</div>
+          <div class="cd-stat-label">Accuracy</div>
+        </div>
+        <div class="cd-stat">
+          <div class="cd-stat-value">${qCorrect} / ${qWrong}</div>
+          <div class="cd-stat-label">✓ / ✗</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (relatedSummaries.length) {
+    html += `<div class="cd-section">
+      <div class="cd-section-title">Appears in lectures (${relatedSummaries.length})</div>
+      ${relatedSummaries.map(e => `
+        <div class="cd-list-item" data-goto-summary="${e.id}">
+          <span>${escapeHtml(e.data?.title || 'Summary')}</span>
+          <span class="cdi-meta">${escapeHtml(e.name)} · ${formatTime(e.ts)}</span>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
+  if (relatedQuestions.length) {
+    html += `<div class="cd-section">
+      <div class="cd-section-title">Related quiz questions (${relatedQuestions.length})</div>
+      ${relatedQuestions.slice(0, 8).map(rq => {
+        const grading = rq.question.grading;
+        const tag = grading === 'correct' ? '✓' : (grading === 'wrong' ? '✗' : '·');
+        const color = grading === 'correct' ? 'var(--success)' : (grading === 'wrong' ? 'var(--error)' : 'var(--text-dim)');
+        return `<div class="cd-list-item" data-goto-quiz="${rq.quiz.id}">
+          <span><span style="color:${color};font-weight:600;margin-right:6px">${tag}</span>${escapeHtml(rq.question.question.slice(0, 80))}${rq.question.question.length > 80 ? '…' : ''}</span>
+          <span class="cdi-meta">${escapeHtml(rq.quiz.name)}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  if (relatedRels.length) {
+    const relMap = {
+      hierarchy: 'HIERARCHY', prerequisite: 'PREREQUISITE',
+      contrast: 'CONTRAST', application: 'APPLICATION', extension: 'EXTENSION'
+    };
+    html += `<div class="cd-section">
+      <div class="cd-section-title">Related concepts (${relatedRels.length})</div>
+      ${relatedRels.map(r => {
+        const other = normalize(r.from) === key ? r.to : r.from;
+        const dir = normalize(r.from) === key ? '→' : '←';
+        return `<div class="cd-list-item" data-goto-concept="${escapeHtml(other)}">
+          <span><span style="color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:10px;margin-right:8px">${relMap[r.type] || r.type}</span>${dir} ${escapeHtml(other)}</span>
+          <span class="cdi-meta">${r.description ? escapeHtml(r.description.slice(0, 40)) + (r.description.length > 40 ? '…' : '') : ''}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  const body = document.getElementById('conceptDetailBody');
+  body.innerHTML = html;
+
+  body.querySelectorAll('[data-goto-summary]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.view.summary = el.dataset.gotoSummary;
+      document.getElementById('conceptDetailOverlay').classList.remove('show');
+      switchTab('summary');
+      renderSummary();
+    });
+  });
+  body.querySelectorAll('[data-goto-quiz]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.view.quiz = el.dataset.gotoQuiz;
+      document.getElementById('conceptDetailOverlay').classList.remove('show');
+      switchTab('quiz');
+      renderQuiz();
+    });
+  });
+  body.querySelectorAll('[data-goto-concept]').forEach(el => {
+    el.addEventListener('click', () => openConceptDetail(el.dataset.gotoConcept));
+  });
+
+  document.getElementById('conceptDetailOverlay').classList.add('show');
+}
+// ============================================================
+// EXAM PREP DASHBOARD
+// ============================================================
+function renderPrep() {
+  const s = getActiveSubject(); if (!s) return;
+  const div = document.getElementById('prepResult');
+
+  const summaryCount = s.summaryArchive.length;
+  const conceptTotal = Object.keys(s.conceptStats).length;
+  const quizArchiveCount = s.quizArchive.length;
+
+  if (summaryCount === 0) {
+    div.innerHTML = `<div class="empty-state">
+      <div class="es-icon">◉</div>
+      <h4>Your dashboard is waiting</h4>
+      <p>Once you generate summaries and grade a few quizzes, this page shows weak concepts, high-frequency exam topics, and a recommended study order.</p>
+    </div>`;
+    return;
+  }
+
+  let totalQ = 0, totalCorrect = 0, totalWrong = 0;
+  s.quizArchive.forEach(qz => {
+    qz.data.forEach(q => {
+      if (q.grading === 'correct') { totalCorrect++; totalQ++; }
+      else if (q.grading === 'wrong') { totalWrong++; totalQ++; }
+    });
+  });
+  s.quizArchive.forEach(qz => { totalQ += qz.data.filter(q => q.grading === null).length; });
+  const graded = totalCorrect + totalWrong;
+  const overallAcc = graded ? totalCorrect / graded : null;
+
+  const weak = computeWeakConcepts(s);
+  const hot = computeHotConcepts(s);
+
+  const mastered = Object.values(s.conceptStats).filter(st => {
+    const t = st.quizCorrect + st.quizWrong;
+    return t >= 2 && st.quizCorrect / t >= 0.85;
+  }).length;
+  const partial = Object.values(s.conceptStats).filter(st => {
+    const t = st.quizCorrect + st.quizWrong;
+    return t >= 2 && st.quizCorrect / t >= 0.5 && st.quizCorrect / t < 0.85;
+  }).length;
+  const weakCount = weak.length;
+  const untested = Math.max(0, conceptTotal - mastered - partial - weakCount);
+
+  let examCountdown = null;
+  if (state.settings.examDate) {
+    const days = Math.ceil((new Date(state.settings.examDate) - new Date()) / (1000 * 60 * 60 * 24));
+    examCountdown = days;
+  }
+
+  let html = `<div class="prep-grid">
+    <div class="prep-card accent">
+      <div class="prep-label">Summaries</div>
+      <div class="prep-value">${summaryCount}</div>
+      <div class="prep-sub">lectures processed</div>
+    </div>
+    <div class="prep-card">
+      <div class="prep-label">Concepts extracted</div>
+      <div class="prep-value">${conceptTotal}</div>
+      <div class="prep-sub">${hot.length} high-frequency (🔥)</div>
+    </div>
+    <div class="prep-card ${overallAcc !== null && overallAcc < 0.7 ? 'warning' : 'success'}">
+      <div class="prep-label">Quiz accuracy</div>
+      <div class="prep-value">${overallAcc !== null ? Math.round(overallAcc * 100) + '%' : '—'}</div>
+      <div class="prep-sub">${graded} graded · ${quizArchiveCount} quiz${quizArchiveCount === 1 ? '' : 'zes'}</div>
+    </div>
+    <div class="prep-card ${weakCount >= 3 ? 'hot' : (weakCount >= 1 ? 'warning' : 'success')}">
+      <div class="prep-label">Weak concepts</div>
+      <div class="prep-value">${weakCount}</div>
+      <div class="prep-sub">below 70% accuracy</div>
+    </div>
+    ${examCountdown !== null ? `
+    <div class="prep-card ${examCountdown < 7 ? 'hot' : (examCountdown < 14 ? 'warning' : 'accent')}">
+      <div class="prep-label">Exam countdown</div>
+      <div class="prep-value">${examCountdown >= 0 ? 'D-' + examCountdown : 'Past'}</div>
+      <div class="prep-sub">${new Date(state.settings.examDate).toLocaleDateString()}</div>
+    </div>` : `
+    <div class="prep-card">
+      <div class="prep-label">Exam date</div>
+      <div class="prep-value" style="font-size:14px;line-height:1.4;">Set in Settings</div>
+      <div class="prep-sub">enable countdown</div>
+    </div>`}
+  </div>`;
+
+  if (conceptTotal > 0) {
+    html += `<div class="prep-section">
+      <h3>Mastery breakdown</h3>
+      <div class="prep-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+        <div class="prep-card success">
+          <div class="prep-label">Mastered</div>
+          <div class="prep-value">${mastered}</div>
+          <div class="prep-sub">≥85% accuracy (2+ q)</div>
+        </div>
+        <div class="prep-card warning">
+          <div class="prep-label">Partial</div>
+          <div class="prep-value">${partial}</div>
+          <div class="prep-sub">50-85% accuracy</div>
+        </div>
+        <div class="prep-card hot">
+          <div class="prep-label">Weak</div>
+          <div class="prep-value">${weakCount}</div>
+          <div class="prep-sub">&lt;70% accuracy (needs work)</div>
+        </div>
+        <div class="prep-card">
+          <div class="prep-label">Untested</div>
+          <div class="prep-value">${untested}</div>
+          <div class="prep-sub">&lt;2 quiz questions yet</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if (weak.length) {
+    html += `<div class="prep-section">
+      <h3>🎯 Weak concepts — study these first</h3>
+      <div class="section-sub">Concepts where your quiz accuracy is below 70%. Click any row for deep-dive.</div>
+      ${weak.slice(0, 10).map((st, i) => {
+        const total = st.quizCorrect + st.quizWrong;
+        const acc = st.quizCorrect / total;
+        const accPct = Math.round(acc * 100);
+        const cls = acc < 0.5 ? 'hot' : (acc < 0.75 ? 'warm' : 'cool');
+        return `<div class="weak-item" data-concept="${escapeHtml(st.name)}">
+          <div class="weak-rank">#${i + 1}</div>
+          <div>
+            <div class="weak-name">${escapeHtml(st.name)}</div>
+            <div class="weak-meta">${total} question${total !== 1 ? 's' : ''} attempted · ${st.quizCorrect} ✓ / ${st.quizWrong} ✗</div>
+          </div>
+          <div class="weak-bar"><div class="fill ${cls}" style="width:${accPct}%"></div></div>
+          <div class="weak-accuracy ${cls}">${accPct}%</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  if (hot.length) {
+    html += `<div class="prep-section">
+      <h3>🔥 High-frequency concepts — likely exam topics</h3>
+      <div class="section-sub">Concepts that appear repeatedly across lectures. Prioritize understanding these.</div>
+      ${hot.slice(0, 10).map(st => {
+        const total = st.quizCorrect + st.quizWrong;
+        const acc = total ? st.quizCorrect / total : null;
+        const accStr = acc === null ? 'untested' : `${Math.round(acc*100)}% accuracy`;
+        const icon = st.appearances >= 4 ? '🔥' : (st.appearances >= 2 ? '⭐' : '•');
+        return `<div class="hot-concept-item" data-concept="${escapeHtml(st.name)}">
+          <div class="hot-icon">${icon}</div>
+          <div>
+            <div class="hot-name">${escapeHtml(st.name)}</div>
+            <div class="hot-meta">appeared in ${st.appearances} lecture${st.appearances !== 1 ? 's' : ''} · ${accStr}</div>
+          </div>
+          <div class="hot-count">×${st.appearances}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  const plan = buildStudyPlan(s, weak, hot);
+  if (plan.length) {
+    html += `<div class="prep-section">
+      <h3>📋 Recommended study order</h3>
+      <div class="section-sub">Generated from your weakness profile and ontology structure. Work top-to-bottom.</div>
+      ${plan.map((step, i) => `<div class="study-plan-item">
+        <div class="study-plan-num">${String(i + 1).padStart(2, '0')}</div>
+        <div class="study-plan-body">
+          <div class="study-plan-title">${escapeHtml(step.title)}</div>
+          <div class="study-plan-desc">${escapeHtml(step.desc)}</div>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  div.innerHTML = html;
+
+  div.querySelectorAll('[data-concept]').forEach(el => {
+    el.addEventListener('click', () => openConceptDetail(el.dataset.concept));
+  });
+}
+
+function buildStudyPlan(s, weak, hot) {
+  const plan = [];
+
+  const ontBoth = new Set((s.ontology.concepts || []).filter(c => c.source === 'BOTH').map(c => normalize(c.name)));
+  const criticalWeak = weak.filter(st => ontBoth.has(normalize(st.name)) || (st.appearances >= 2));
+  if (criticalWeak.length) {
+    const names = criticalWeak.slice(0, 3).map(st => st.name).join(', ');
+    plan.push({
+      title: `Re-read summaries for: ${names}`,
+      desc: 'These concepts are both weak AND high-frequency. Click each in the Weak list above to find the exact lectures that cover them.'
+    });
+  }
+
+  const weakKeys = new Set(weak.map(st => normalize(st.name)));
+  const prereqsForWeak = new Set();
+  (s.ontology.relations || []).forEach(r => {
+    if (r.type === 'prerequisite' && weakKeys.has(normalize(r.to))) {
+      prereqsForWeak.add(r.from);
+    }
+  });
+  if (prereqsForWeak.size) {
+    plan.push({
+      title: `Review prerequisites: ${Array.from(prereqsForWeak).slice(0, 4).join(', ')}`,
+      desc: 'These are prerequisite concepts for your weak areas. Solidifying them often fixes downstream weakness.'
+    });
+  }
+
+  if (weak.length >= 2) {
+    plan.push({
+      title: 'Generate a weak-concept quiz',
+      desc: 'Use the "Generate weak-concept quiz" button on the Quiz tab to spawn 10 new questions focused on your lowest-accuracy concepts.'
+    });
+  }
+
+  const hotUntested = hot.filter(st => (st.quizCorrect + st.quizWrong) < 2);
+  if (hotUntested.length) {
+    plan.push({
+      title: `Test yourself on untested hot concepts: ${hotUntested.slice(0, 3).map(st => st.name).join(', ')}`,
+      desc: 'High-frequency means likely on the exam — but you haven\'t been tested on them yet.'
+    });
+  }
+
+  if (s.summaryArchive.length < 5) {
+    plan.push({
+      title: 'Add more lectures to the pipeline',
+      desc: `You have ${s.summaryArchive.length} summar${s.summaryArchive.length === 1 ? 'y' : 'ies'}. Processing more lectures reveals which concepts truly repeat.`
+    });
+  }
+
+  if (!plan.length) {
+    plan.push({
+      title: 'Keep going',
+      desc: 'Generate summaries, quizzes, and grade them — this dashboard adapts as you collect data.'
+    });
+  }
+
+  return plan;
+}
+
+// ============================================================
+// ARCHIVE (summary / quiz)
+// ============================================================
+function renderArchive(type, archive, currentEntryId) {
+  const countEl = document.getElementById(`${type}ArchiveCount`);
+  const listEl = document.getElementById(`${type}ArchiveList`);
+  countEl.textContent = `${archive.length} item${archive.length === 1 ? '' : 's'}`;
+
+  if (!archive.length) { listEl.innerHTML = '<div class="archive-empty">No items yet.</div>'; return; }
+  const latestId = archive[archive.length - 1].id;
+  listEl.innerHTML = archive.slice().reverse().map(e => {
+    const isCurrent = e.id === currentEntryId;
+    const isLatest = e.id === latestId;
+    const preview = buildArchivePreview(type, e);
+    const scoreBlock = buildArchiveScore(type, e);
+    const latestTag = isLatest ? '<span style="color:var(--success);font-weight:600;font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.08em;margin-left:6px;">LATEST</span>' : '';
+    return `
+      <div class="archive-item${isCurrent ? ' is-current' : ''}" data-id="${e.id}" data-type="${type}">
+        <div class="archive-name">${escapeHtml(e.name)}${latestTag}</div>
+        <div class="archive-body">
+          <div class="archive-preview">${escapeHtml(preview)}</div>
+          <div class="archive-time">${formatTime(e.ts)}</div>
+          ${scoreBlock}
+        </div>
+        <div class="archive-actions">
+          <button class="archive-action-btn delete" data-act="delete" title="Delete">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  listEl.querySelectorAll('.archive-item').forEach(el => {
+    const id = el.dataset.id;
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-act="delete"]')) return;
+      const arr = type === 'summary' ? getActiveSubject().summaryArchive : getActiveSubject().quizArchive;
+      const latest = arr[arr.length - 1];
+      state.view[type] = (latest && latest.id === id) ? null : id;
+      if (type === 'summary') renderSummary();
+      else renderQuiz();
+    });
+    const delBtn = el.querySelector('[data-act="delete"]');
+    if (delBtn) {
+      delBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const s = getActiveSubject();
+        const arr = type === 'summary' ? s.summaryArchive : s.quizArchive;
+        const item = arr.find(x => x.id === id);
+        if (!item) return;
+        if (!confirm(`Delete ${item.name}? This cannot be undone.`)) return;
+        // Unregister concept stats before deletion
+        if (type === 'summary') {
+          unrecordSummaryConcepts(s, item);
+        } else {
+          item.data.forEach(q => {
+            if (q.grading !== null) unrecordQuizGrading(s, q, q.grading === 'correct');
+            (q.concept_tags || []).forEach(c => {
+              const stat = s.conceptStats[normalize(c)];
+              if (stat) stat.quizQuestions = Math.max(0, stat.quizQuestions - 1);
+            });
+          });
+        }
+        const idx = arr.indexOf(item);
+        arr.splice(idx, 1);
+        if (state.view[type] === id) state.view[type] = null;
+        if (type === 'summary') renderSummary();
+        else renderQuiz();
+        renderPrep();
+        updatePrepBadge();
+        updateActionHints();
+        scheduleSave(0);
+        toast(`${item.name} deleted.`, 'info');
+      });
+    }
+  });
+}
+
+function buildArchivePreview(type, entry) {
+  if (type === 'summary') {
+    const d = entry.data;
+    if (d.title) return d.title;
+    if (d.concepts?.length) return `${d.concepts.length} concepts · ${d.terms?.length || 0} terms`;
+    return 'Summary';
+  }
+  if (type === 'quiz') {
+    const n = entry.data.length;
+    const mc = entry.data.filter(q => q.type === 'multiple_choice').length;
+    return `${n} questions (${mc} MC · ${n - mc} short answer)${entry.focusWeak ? ' · WEAK-FOCUS' : ''}`;
+  }
+  return '';
+}
+
+function buildArchiveScore(type, entry) {
+  if (type !== 'quiz') return '';
+  const score = quizScore(entry);
+  if (score.total === 0) return '';
+  if (score.pending === score.total) {
+    return `<div class="archive-score pending">not graded yet</div>`;
+  }
+  const acc = score.correct / (score.correct + score.wrong);
+  const pct = Math.round(acc * 100);
+  const cls = acc < 0.5 ? 'hot' : (acc < 0.75 ? 'warm' : 'cool');
+  return `<div class="archive-score ${cls}">${score.correct}/${score.correct + score.wrong} · ${pct}%${score.pending ? ' (' + score.pending + ' ungraded)' : ''}</div>`;
+}
+
+// ============================================================
+// SETTINGS MODAL
+// ============================================================
+function openSettings() {
+  document.getElementById('syncUrlInput').value = state.settings.syncUrl || '';
+  document.getElementById('examDateInput').value = state.settings.examDate || '';
+  setSyncStatus(state.settings.syncUrl ? `Active: ${state.settings.syncUrl}` : 'Not configured.');
+  document.getElementById('settingsOverlay').classList.add('show');
+}
+function closeSettings() { document.getElementById('settingsOverlay').classList.remove('show'); }
+
+function saveSyncUrl() {
+  const url = document.getElementById('syncUrlInput').value.trim();
+  if (url && !/^https?:\/\//.test(url)) { toast('Sync URL must start with http:// or https://', 'error'); return; }
+  state.settings.syncUrl = url;
+  scheduleSave(0);
+  setSyncStatus(url ? `Active: ${url}` : 'Cleared.');
+  updateFooterSyncStatus();
+  toast('Sync URL saved.', 'success');
+}
+function clearSyncUrl() {
+  state.settings.syncUrl = '';
+  document.getElementById('syncUrlInput').value = '';
+  scheduleSave(0);
+  setSyncStatus('Disabled.');
+  updateFooterSyncStatus();
+  toast('Cloud sync disabled.', 'info');
+}
+function saveExamDate() {
+  const val = document.getElementById('examDateInput').value;
+  state.settings.examDate = val || '';
+  scheduleSave(0);
+  renderPrep();
+  toast('Exam date saved.', 'success');
+}
+function clearExamDate() {
+  state.settings.examDate = '';
+  document.getElementById('examDateInput').value = '';
+  scheduleSave(0);
+  renderPrep();
+  toast('Exam date cleared.', 'info');
+}
+
+async function wipeWorkspace() {
+  if (!confirm('Wipe the entire workspace for this API key? This deletes ALL subjects, summaries, quizzes, and ontologies from this browser. Cannot be undone.')) return;
+  if (!confirm('Last chance — are you absolutely sure?')) return;
+  try {
+    if (state.keyHash) await storage.delete(`ws:${state.keyHash}`);
+    state.subjects = {};
+    state.subjectOrder = [];
+    state.dailyCounter = {};
+    const first = makeSubject('Subject 1');
+    state.subjects[first.id] = first;
+    state.subjectOrder.push(first.id);
+    state.activeSubjectId = first.id;
+    renderAll();
+    closeSettings();
+    toast('Workspace wiped.', 'info');
+    await doSave();
+  } catch (err) {
+    toast('Wipe failed: ' + err.message, 'error');
+  }
+}
+
+// ============================================================
+// EXPORT / IMPORT
+// ============================================================
+function exportJson() {
+  const payload = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    exportedFrom: 'PUZZLE.AI',
+    subjects: state.subjects,
+    subjectOrder: state.subjectOrder,
+    activeSubjectId: state.activeSubjectId,
+    dailyCounter: state.dailyCounter,
+    settings: { examDate: state.settings.examDate } // exclude syncUrl
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url;
+  a.download = `puzzle-ai-backup-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  toast('Exported.', 'success');
+}
+
+function importJson(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (!parsed.subjects || !parsed.subjectOrder) {
+        throw new Error('File does not look like a PUZZLE.AI backup.');
+      }
+      const subjectCount = parsed.subjectOrder.length;
+      const confirmMsg = `Import ${subjectCount} subject(s)?\n\n` +
+        `• "Merge" = add imported subjects alongside current (renamed if name conflicts).\n` +
+        `• "Replace" = wipe current workspace, use imported data only.\n\n` +
+        `Click OK to MERGE, Cancel to abort.\n\n` +
+        `(For Replace, use "Wipe current workspace" first, then Import.)`;
+      if (!confirm(confirmMsg)) {
+        event.target.value = '';
+        return;
+      }
+      // Merge: append subjects with ID collision handling
+      Object.values(parsed.subjects).forEach(sub => {
+        let newId = sub.id;
+        if (state.subjects[newId]) newId = 'subj_' + Math.random().toString(36).slice(2, 9);
+        let newName = sub.name;
+        const existingNames = new Set(Object.values(state.subjects).map(s => s.name));
+        if (existingNames.has(newName)) newName = sub.name + ' (imported)';
+        const newSubject = { ...sub, id: newId, name: newName };
+        state.subjects[newId] = newSubject;
+        state.subjectOrder.push(newId);
+      });
+      // Merge dailyCounter (take max per day)
+      if (parsed.dailyCounter) {
+        Object.entries(parsed.dailyCounter).forEach(([day, count]) => {
+          state.dailyCounter[day] = Math.max(state.dailyCounter[day] || 0, count);
+        });
+      }
+      // Import examDate if local is empty
+      if (parsed.settings?.examDate && !state.settings.examDate) {
+        state.settings.examDate = parsed.settings.examDate;
+      }
+      // Trim subjects to MAX
+      while (state.subjectOrder.length > MAX_SUBJECTS) {
+        const removedId = state.subjectOrder.shift();
+        delete state.subjects[removedId];
+        toast(`Trimmed excess subjects (max ${MAX_SUBJECTS}).`, 'info');
+      }
+      renderAll();
+      scheduleSave(0);
+      toast(`Imported ${subjectCount} subject(s).`, 'success');
+      event.target.value = '';
+    } catch (err) {
+      toast('Import failed: ' + err.message, 'error');
+      event.target.value = '';
+    }
+  };
+  reader.onerror = () => { toast('Failed to read file.', 'error'); event.target.value = ''; };
+  reader.readAsText(file);
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function extractJson(text) {
+  try { return JSON.parse(text); } catch {}
+  let cleaned = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+  try { return JSON.parse(cleaned); } catch {}
+  const first = cleaned.indexOf('{'); const last = cleaned.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) {
+    const slice = cleaned.slice(first, last + 1);
+    try { return JSON.parse(slice); } catch {}
+  }
+  throw new Error('Could not parse the response as JSON.');
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
+function setBtnLoading(btn, isLoading, label) {
+  if (isLoading) {
+    btn.dataset.originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span>${label || 'Working...'}`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = label || btn.dataset.originalLabel || 'Run';
+  }
+}
+
+function toast(msg, type = 'info') {
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity 0.3s, transform 0.3s';
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(20px)';
+    setTimeout(() => el.remove(), 300);
+  }, 4500);
+}
+
+// Generic modal
+let modalResolver = null;
+function openModal({ title, desc, placeholder, confirmLabel, onConfirm }) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalDesc').textContent = desc;
+  const inp = document.getElementById('modalInput');
+  inp.placeholder = placeholder || '';
+  inp.value = '';
+  document.getElementById('modalConfirm').textContent = confirmLabel || 'Confirm';
+  document.getElementById('modalOverlay').classList.add('show');
+  setTimeout(() => inp.focus(), 50);
+  modalResolver = onConfirm;
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  modalResolver = null;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('modalCancel').addEventListener('click', closeModal);
+  document.getElementById('modalConfirm').addEventListener('click', () => {
+    const v = document.getElementById('modalInput').value;
+    const cb = modalResolver;
+    closeModal();
+    if (cb) cb(v);
+  });
+  document.getElementById('modalInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('modalConfirm').click();
+    else if (e.key === 'Escape') closeModal();
+  });
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target.id === 'modalOverlay') closeModal();
+  });
+  document.getElementById('settingsOverlay').addEventListener('click', e => {
+    if (e.target.id === 'settingsOverlay') closeSettings();
+  });
+
+  // BOOT
+  init();
+});
+</script>
+</body>
+</html>
